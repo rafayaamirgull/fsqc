@@ -3,7 +3,9 @@
 ## Description
 
 This package provides quality assurance / quality control scripts for FastSurfer- or
-FreeSurfer-processed structural MRI data.
+FreeSurfer-processed structural MRI data. It will check outputs of these two software 
+packages by means of quantitative and visual summaries. Prior processing of data using 
+either FastSurfer or FreeSurfer is required, i.e. the software cannot be used on raw images.
 
 It is a revision, extension, and translation to the Python language of the
 [Freesurfer QA Tools](https://surfer.nmr.mgh.harvard.edu/fswiki/QATools). It has
