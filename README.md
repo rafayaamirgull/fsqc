@@ -190,9 +190,7 @@ A list of changes is available [here](CHANGES.md).
 This repository contains multiple branches, reflecting the ongoing
 development of the toolbox. The two primary branches are the main branch
 (`stable`) and the development branch (`dev`). New features will first be added
-to the development branch, and eventually be merged with the main branch. You
-are currently on the main branch. To go to the development branch, select it
-from the drop-down menu on the top left, or [click here](https://github.com/Deep-MI/fsqc/tree/dev).
+to the development branch, and eventually be merged with the main branch. 
 
 ### Roadmap
 

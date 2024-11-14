@@ -93,7 +93,7 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
     # check if annotation has labels that are not included in the colortable
     if any(annotL[0] == -1):
         # prepend colortable and update indices
-        ctabL = np.concatenate((np.mat([127, 127, 127]), annotL[1][:, 0:3]), axis=0)
+        ctabL = np.concatenate((np.asmatrix([127, 127, 127]), annotL[1][:, 0:3]), axis=0)
         indsL = annotL[0] + 1
     else:
         ctabL = annotL[1][:, 0:3]
@@ -104,7 +104,7 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
     # check if annotation has labels that are not included in the colortable
     if any(annotR[0] == -1):
         # prepend colortable and update indices
-        ctabR = np.concatenate((np.mat([127, 127, 127]), annotR[1][:, 0:3]), axis=0)
+        ctabR = np.concatenate((np.asmatrix([127, 127, 127]), annotR[1][:, 0:3]), axis=0)
         indsR = annotR[0] + 1
     else:
         ctabR = annotR[1][:, 0:3]
