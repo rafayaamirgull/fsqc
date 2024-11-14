@@ -33,7 +33,7 @@ After building the fsqcdocker image, run it with the following command to see th
 docker run --rm --user XXXX:YYYY deepmi/fsqcdocker
 ```
 
-* This corresponds to calling `python3 fsqc.py` from the command line for a non-dockerized version of the program.
+* This corresponds to calling `run_fsqc` from the command line for a non-dockerized version of the program.
 * The `--rm` flag takes care of removing the container once the analysis finished.
 * The `--user XXXX:YYYY` part should be changed to the appropriate user id (XXXX, a number) and group id (YYYY, also a number); both can be checked with the commands `id -u` and `id -g` on linux-like systems). All generated files will then belong to the specified user and group. Without the flag, the docker container will be run as root with all corresponding privileges, which is strongly discouraged.
 * You can run different versions of the image using `fsqc:<tag>` instead of `fsqc` and replacing `<tag>` with any particular version identifier.
@@ -53,5 +53,5 @@ docker run \
 
 * The first two `-v` arguments mount your data directory and output directories into the docker image. Inside the image, they are visible under the name following the colon (in this case `/data` and `/output`, but these can be different). From within the docker image / container, there will be read and write access to the directories that are mounted into the image (unless specified otherwise).
 * The next part of the docker command is the name of the Docker image, which is `deepmi/fsqcdocker`.
-* After that, all other flags are identical to the ones that are used for the `fsqc.py` program (which are explained on the main page and the help message of the program). In addition to the `--subjects_dir` and `--output_dir` arguments, which are mandatory, the `--subjects`, `-screenshots`, `--fornix` arguments, for example, could be specified - in the same way as for non-dockerized version of the program. Note that file- and pathnames need to correspond to the targets of the file / directory mappings within the Docker image, not to the local system.
+* After that, all other flags are identical to the ones that are used for the `run_fsqc` program (which are explained on the main page and the help message of the program). In addition to the `--subjects_dir` and `--output_dir` arguments, which are mandatory, the `--subjects`, `-screenshots`, `--fornix` arguments, for example, could be specified - in the same way as for non-dockerized version of the program. Note that file- and pathnames need to correspond to the targets of the file / directory mappings within the Docker image, not to the local system.
 * Also note that if you supply additional filenames to the fsqc script (using e.g. the `--subjects-file` argument), their locations must be mounted using another `-v` option (unless they are present in one of the already mounted directories), and the filenames given to the script need to refer to the mounted location inside the Docker.
