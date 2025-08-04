@@ -953,6 +953,8 @@ def _check_arguments(argsDict):
             )
 
     # check screenshots_orientation
+    if isinstance(argsDict["screenshots_orientation"], list):
+        argsDict["screenshots_orientation"] = argsDict["screenshots_orientation"][0]
     if argsDict["screenshots_orientation"] != "neurological" and argsDict[
         "screenshots_orientation"
     ] != "radiological":
@@ -3665,7 +3667,7 @@ def run_fsqc(
     """
     # set defaults here to avoid mutable datastructures for default argument B006
     if screenshots_orientation is None:
-        screenshots_orientation = ["radiological"]
+        screenshots_orientation = "radiological"
     if surfaces_views is None:
         surfaces_views = ["left", "right", "superior", "inferior"]
 
