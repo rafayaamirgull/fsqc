@@ -909,6 +909,10 @@ def _check_arguments(argsDict):
         if argsDict["screenshots_surf"].lower() == "none":
             argsDict["screenshots_surf"] = None
             logging.info("Found screenshot surfaces set to None")
+    else:
+        if argsDict["screenshots_surf"][0].lower() == "none":
+            argsDict["screenshots_surf"] = None
+            logging.info("Found screenshot surfaces set to None")
 
     # check if screenshots_views argument can be evaluated
     if isinstance(argsDict["screenshots_views"], list):
