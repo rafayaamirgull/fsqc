@@ -1501,7 +1501,7 @@ def _check_packages():
             )
         elif packaging.version.parse(lp.__version__) < packaging.version.parse("1.0"):
             raise ImportError(
-                "ERROR: A version >=1.0 of the 'lapy' package is required for surface plots (see README.md for details on installation)"
+                "ERROR: A version >=1.0 of the 'lapy' package is required (see README.md for details on installation)"
             )
     else:
         raise ImportError(
