@@ -83,54 +83,30 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
 
             core.snap1(
                 meshpath=triaPialL,
-                #overlaypath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.thickness",
-                #labelpath="/home/diersk/Work/software/whippersnappy/tests/bert/label/rh.cortex.label",
                 annotpath=annotL,
                 outpath=fpath_lp,
-                #curvpath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.curv",
                 view=wview,
-                #caption="test",
-                #colorbar=False,
-                #scale=1.25,
                 specular=False
             )
             core.snap1(
                 meshpath=triaPialR,
-                #overlaypath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.thickness",
-                #labelpath="/home/diersk/Work/software/whippersnappy/tests/bert/label/rh.cortex.label",
                 annotpath=annotR,
                 outpath=fpath_rp,
-                #curvpath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.curv",
                 view=wview,
-                #caption="test",
-                #colorbar=False,
-                #scale=1.25,
                 specular=False
             )
             core.snap1(
                 meshpath=triaInflL,
-                #overlaypath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.thickness",
-                #labelpath="/home/diersk/Work/software/whippersnappy/tests/bert/label/rh.cortex.label",
                 annotpath=annotL,
                 outpath=fpath_li,
-                #curvpath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.curv",
                 view=wview,
-                #caption="test",
-                #colorbar=False,
-                #scale=1.25,
                 specular=False
             )
             core.snap1(
                 meshpath=triaInflR,
-                #overlaypath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.thickness",
-                #labelpath="/home/diersk/Work/software/whippersnappy/tests/bert/label/rh.cortex.label",
                 annotpath=annotR,
                 outpath=fpath_ri,
-                #curvpath="/home/diersk/Work/software/whippersnappy/tests/bert/surf/rh.curv",
                 view=wview,
-                #caption="test",
-                #colorbar=False,
-                #scale=1.25,
                 specular=False
             )
 
