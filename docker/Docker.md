@@ -36,7 +36,7 @@ docker run --rm --init --user XXXX:YYYY deepmi/fsqcdocker
 * This corresponds to calling `run_fsqc` from the command line for a non-dockerized version of the program.
 * The `--rm` flag takes care of removing the container once the analysis finished.
 * The `--init` flag adds a helper program that allows for better process control (e.g. termation via Ctrl+C) and clean-up of finished processes. It is required from version 2.1.4 and later.
-* The `--user XXXX:YYYY` part should be changed to the appropriate user id (XXXX, a number) and group id (YYYY, also a number); both can be checked with the commands `id -u` and `id -g` on linux-like systems). All generated files will then belong to the specified user and group. Usig this flag is **strongly** recommended. Without the flag, the docker container will be run as root with all corresponding privileges, which is strongly discouraged.
+* The `--user XXXX:YYYY` part should be changed to the appropriate user id (XXXX, a number) and group id (YYYY, also a number); both can be checked with the commands `id -u` and `id -g` on linux-like systems). All generated files will then belong to the specified user and group. Using this flag is **strongly** recommended. Without the flag, the docker container will be run as root with all corresponding privileges, which is strongly discouraged.
 * You can run different versions of the image using `fsqc:<tag>` instead of `fsqc` and replacing `<tag>` with any particular version identifier.
 
 An analysis can be performed by adding several options to the above command (and after adjusting the user-specific settings and file- and pathnames):
