@@ -7,10 +7,10 @@ pandas
 scipy
 scikit-image
 transforms3d
-pyopengl 
-glfw 
-pillow 
+pyopengl
+glfw
+pillow
 pyrr
 PyQt6
-git+https://github.com/Deep-MI/WhipperSnapPy.git@edf571cf7912a1e3497f667a77a5fde36e55ac9f
+-e git+https://github.com/Deep-MI/WhipperSnapPy.git@edf571cf7912a1e3497f667a77a5fde36e55ac9f
 #whippersnappy>=1.3.0

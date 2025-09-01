@@ -30,7 +30,7 @@ RUN pip3 install --upgrade pip
 RUN pip3 install -r /app/fsqc/requirements.txt
 
 # temporarily get whippersnappy directly from github
-RUN pip3 install git+https://github.com/Deep-MI/WhipperSnapPy.git@edf571cf7912a1e3497f667a77a5fde36e55ac9f#egg=whippersnappy
+RUN pip3 install "git+https://github.com/Deep-MI/WhipperSnapPy.git@edf571cf7912a1e3497f667a77a5fde36e55ac9f#egg=whippersnappy"
 
 # Add other environment variables
 ENV OMP_NUM_THREADS=1
