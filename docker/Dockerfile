@@ -20,13 +20,13 @@ RUN apt-get install -y --no-install-recommends \
     libxcb-xinerama0
 
 # clone fsqc
-RUN git clone --branch dev --single-branch https://github.com/Deep-MI/fsqc.git /app/fsqc
-#RUN git clone https://github.com/Deep-MI/fsqc.git /app/fsqc
+#RUN git clone --branch dev --single-branch https://github.com/Deep-MI/fsqc.git /app/fsqc
+RUN git clone https://github.com/Deep-MI/fsqc.git /app/fsqc
 
 # upgrade pip
 RUN pip3 install --upgrade pip
 
-# install additional python packages (TODO: not necessary if using pip install)
+# install additional python packages (not necessary if using pip install)
 RUN pip3 install -r /app/fsqc/requirements.txt
 
 # Add other environment variables
