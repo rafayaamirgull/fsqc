@@ -33,6 +33,7 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
     import nibabel as nb
     import numpy as np
     from whippersnappy import core
+    from whippersnappy.types import ViewType
 
     # -----------------------------------------------------------------------------
     # import surfaces and overlays
@@ -71,15 +72,17 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
         if view in VIEWS:
 
             if view == "superior":
-                wview = "top"
+                wview = ViewType.TOP
             elif view == "inferior":
-                wview = "bottom"
+                wview = ViewType.BOTTOM
             elif view == "anterior":
-                wview = "front"
+                wview = ViewType.FRONT
             elif view == "posterior":
-                wview = "back"
-            else:
-                wview = view
+                wview = ViewType.BACK
+            elif view == "left":
+                wview = ViewType.LEFT
+            elif view == "right":
+                wview = ViewType.RIGHT
 
             core.snap1(
                 meshpath=triaPialL,
