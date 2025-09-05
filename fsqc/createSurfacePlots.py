@@ -30,8 +30,6 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
 
     import os
 
-    import nibabel as nb
-    import numpy as np
     from whippersnappy import core
     from whippersnappy.types import ViewType
 
