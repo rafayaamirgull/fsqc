@@ -30,142 +30,93 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
 
     import os
 
-    import lapy as lp
-    import nibabel as nb
-    import numpy as np
-    from lapy import plot as lpp
-
-    # -----------------------------------------------------------------------------
-    # settings
-    _views_available = [
-        ("anterior", 0, 2, 0),
-        ("posterior", 0, -2, 0),
-        ("left", -2, 0, 0),
-        ("right", 2, 0, 0),
-        ("superior", 0, 0, 2),
-        ("inferior", 0, 0, -2),
-    ]
-    scale_png = 0.8
+    from whippersnappy import core
+    from whippersnappy.types import ViewType
 
     # -----------------------------------------------------------------------------
     # import surfaces and overlays
 
-    triaPialL = nb.freesurfer.read_geometry(
-        os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "lh.pial")
-    )
-    triaPialR = nb.freesurfer.read_geometry(
-        os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "rh.pial")
-    )
-    triaInflL = nb.freesurfer.read_geometry(
-        os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "lh.inflated")
-    )
-    triaInflR = nb.freesurfer.read_geometry(
-        os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "rh.inflated")
-    )
-
-    triaPialL = lp.TriaMesh(triaPialL[0], triaPialL[1])
-    triaPialR = lp.TriaMesh(triaPialR[0], triaPialR[1])
-    triaInflL = lp.TriaMesh(triaInflL[0], triaInflL[1])
-    triaInflR = lp.TriaMesh(triaInflR[0], triaInflR[1])
+    triaPialL = os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "lh.pial")
+    triaPialR = os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "rh.pial")
+    triaInflL = os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "lh.inflated")
+    triaInflR = os.path.join(SUBJECTS_DIR, SUBJECT, "surf", "rh.inflated")
 
     if FASTSURFER is True:
-        annotL = nb.freesurfer.read_annot(
-            os.path.join(SUBJECTS_DIR, SUBJECT, "label", "lh.aparc.DKTatlas.annot"),
-            orig_ids=False,
-        )
-        annotR = nb.freesurfer.read_annot(
-            os.path.join(SUBJECTS_DIR, SUBJECT, "label", "rh.aparc.DKTatlas.annot"),
-            orig_ids=False,
-        )
+        annotL = os.path.join(SUBJECTS_DIR, SUBJECT, "label", "lh.aparc.DKTatlas.annot")
+        annotR = os.path.join(SUBJECTS_DIR, SUBJECT, "label", "rh.aparc.DKTatlas.annot")
     else:
-        annotL = nb.freesurfer.read_annot(
-            os.path.join(SUBJECTS_DIR, SUBJECT, "label", "lh.aparc.annot"),
-            orig_ids=False,
-        )
-        annotR = nb.freesurfer.read_annot(
-            os.path.join(SUBJECTS_DIR, SUBJECT, "label", "rh.aparc.annot"),
-            orig_ids=False,
-        )
+        annotL = os.path.join(SUBJECTS_DIR, SUBJECT, "label", "lh.aparc.annot")
+        annotR = os.path.join(SUBJECTS_DIR, SUBJECT, "label", "rh.aparc.annot")
 
     # -----------------------------------------------------------------------------
     # plots
 
-    # check if annotation has labels that are not included in the colortable
-    if any(annotL[0] == -1):
-        # prepend colortable and update indices
-        ctabL = np.concatenate((np.asmatrix([127, 127, 127]), annotL[1][:, 0:3]), axis=0)
-        indsL = annotL[0] + 1
-    else:
-        ctabL = annotL[1][:, 0:3]
-        indsL = annotL[0]
+    _views_available = [
+        'left',
+        'right',
+        'posterior',
+        'anterior',
+        'inferior',
+        'superior',
+    ]
 
-    vAnnotL = ctabL[indsL, :]
+    for view in _views_available:
 
-    # check if annotation has labels that are not included in the colortable
-    if any(annotR[0] == -1):
-        # prepend colortable and update indices
-        ctabR = np.concatenate((np.asmatrix([127, 127, 127]), annotR[1][:, 0:3]), axis=0)
-        indsR = annotR[0] + 1
-    else:
-        ctabR = annotR[1][:, 0:3]
-        indsR = annotR[0]
-
-    vAnnotR = ctabR[indsR, :]
-
-    # -----------------------------------------------------------------------------
-    # plots
-
-    for view, x, y, z in _views_available:
         fpath_lp = os.path.join(SURFACES_OUTDIR, f"lh.pial.{view}.png")
         fpath_rp = os.path.join(SURFACES_OUTDIR, f"rh.pial.{view}.png")
         fpath_li = os.path.join(SURFACES_OUTDIR, f"lh.inflated.{view}.png")
         fpath_ri = os.path.join(SURFACES_OUTDIR, f"rh.inflated.{view}.png")
 
         if view in VIEWS:
-            camera = dict(
-                up=dict(x=0, y=0, z=1),
-                center=dict(x=0, y=0, z=0),
-                eye=dict(x=x, y=y, z=z),
+
+            if view == "superior":
+                wview = ViewType.TOP
+            elif view == "inferior":
+                wview = ViewType.BOTTOM
+            elif view == "anterior":
+                wview = ViewType.FRONT
+            elif view == "posterior":
+                wview = ViewType.BACK
+            elif view == "left":
+                wview = ViewType.LEFT
+            elif view == "right":
+                wview = ViewType.RIGHT
+
+            core.snap1(
+                meshpath=triaPialL,
+                annotpath=annotL,
+                outpath=fpath_lp,
+                view=wview,
+                specular=False
+            )
+            core.snap1(
+                meshpath=triaPialR,
+                annotpath=annotR,
+                outpath=fpath_rp,
+                view=wview,
+                specular=False
+            )
+            core.snap1(
+                meshpath=triaInflL,
+                annotpath=annotL,
+                outpath=fpath_li,
+                view=wview,
+                specular=False
+            )
+            core.snap1(
+                meshpath=triaInflR,
+                annotpath=annotR,
+                outpath=fpath_ri,
+                view=wview,
+                specular=False
             )
 
-            lpp.plot_tria_mesh(
-                triaPialL,
-                vcolor=vAnnotL,
-                background_color="black",
-                camera=camera,
-                export_png=fpath_lp,
-                no_display=True,
-                scale_png=scale_png,
-            )
-            lpp.plot_tria_mesh(
-                triaPialR,
-                vcolor=vAnnotR,
-                background_color="black",
-                camera=camera,
-                export_png=fpath_rp,
-                no_display=True,
-                scale_png=scale_png,
-            )
-            lpp.plot_tria_mesh(
-                triaInflL,
-                vcolor=vAnnotL,
-                background_color="black",
-                camera=camera,
-                export_png=fpath_li,
-                no_display=True,
-                scale_png=scale_png,
-            )
-            lpp.plot_tria_mesh(
-                triaInflR,
-                vcolor=vAnnotR,
-                background_color="black",
-                camera=camera,
-                export_png=fpath_ri,
-                no_display=True,
-                scale_png=scale_png,
-            )
         else:
             # remove images potentially created in earlier run but not updated now
             for fpath in [fpath_lp, fpath_rp, fpath_li, fpath_ri]:
                 if os.path.isfile(fpath):
                     os.remove(fpath)
+
+    return
+
+

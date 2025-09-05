@@ -15,13 +15,18 @@ RUN apt-get install -y --no-install-recommends \
     python3-dev \
     python3-pip \
     python3-setuptools \
-    python3-wheel
+    python3-wheel \
+    xvfb \
+    libxcb-xinerama0
 
 # clone fsqc
 #RUN git clone --branch dev --single-branch https://github.com/Deep-MI/fsqc.git /app/fsqc
 RUN git clone https://github.com/Deep-MI/fsqc.git /app/fsqc
 
-# install additional python packages (TODO: not necessary if using pip install)
+# upgrade pip
+RUN pip3 install --upgrade pip
+
+# install additional python packages (not necessary if using pip install)
 RUN pip3 install -r /app/fsqc/requirements.txt
 
 # Add other environment variables
@@ -32,8 +37,8 @@ ENV MPLCONFIGDIR=/tmp/mplconfigdir
 WORKDIR /app
 
 # Set entrypoint (non-interactive mode)
-ENTRYPOINT ["python3", "/app/fsqc/run_fsqc"]
+ENTRYPOINT ["xvfb-run", "python3", "/app/fsqc/run_fsqc"]
 
 ## Run app when the container launches (interactive mode)
-#CMD ["/bin/bash"] 
+#CMD ["/bin/bash"]
 
