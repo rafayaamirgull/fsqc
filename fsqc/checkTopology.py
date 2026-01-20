@@ -47,7 +47,6 @@ def checkTopology(subjects_dir, subject):
     import warnings
 
     import numpy as np
-
     from lapy import TriaMesh
 
     # Settings
