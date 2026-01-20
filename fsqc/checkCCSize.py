@@ -53,9 +53,9 @@ def checkCCSize(subjects_dir, subject):
         "CC_Anterior",
     ]
 
-    relative_cc = np.nan
-
     sum_cc = 0.0
+
+    intracranial_volume = None
 
     # Loop through the cc elements
     for cc_segmentation in cc_elements:
@@ -64,10 +64,13 @@ def checkCCSize(subjects_dir, subject):
             # If the segmentation is found, compute the sum and return it.
             if cc_segmentation in aseg_stat_line:
                 sum_cc += float(aseg_stat_line.split()[3])
-            elif "EstimatedTotalIntraCranialVol" in aseg_stat_line:
+            elif "# Measure EstimatedTotalIntraCranialVol" in aseg_stat_line:
                 intracranial_volume = float(aseg_stat_line.split(",")[3])
 
-    relative_cc = sum_cc / intracranial_volume
+    if sum_cc > 0.0 and intracranial_volume is not None:
+        relative_cc = sum_cc / intracranial_volume
+    else:
+        relative_cc = np.nan
 
     logging.info(
         "Relative size of the corpus callosum is " + f"{relative_cc:.4}"

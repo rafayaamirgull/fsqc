@@ -48,6 +48,8 @@ def checkTopology(subjects_dir, subject):
 
     import numpy as np
 
+    from lapy import TriaMesh
+
     # Settings
 
     logging.captureWarnings(True)
@@ -77,21 +79,30 @@ def checkTopology(subjects_dir, subject):
     topo_time_lh = np.nan
     topo_time_rh = np.nan
 
+    # Extract info form surfaces
+
+    lh_orig_nofix = os.path.join(subjects_dir, subject, "surf", "lh.orig.nofix")
+    if os.path.exists(lh_orig_nofix):
+        lh_euler = TriaMesh.read_fssurf(lh_orig_nofix).euler()
+        lh_holes = int(( 2 - lh_euler ) / 2)
+        logging.info("Number of holes in the left hemisphere: " + str(lh_holes))
+    else:
+        logging.info("Could not find: " + lh_orig_nofix)
+
+    rh_orig_nofix = os.path.join(subjects_dir, subject, "surf", "rh.orig.nofix")
+    if os.path.exists(rh_orig_nofix):
+        rh_euler = TriaMesh.read_fssurf(rh_orig_nofix).euler()
+        rh_holes = int(( 2 - rh_euler ) / 2)
+        logging.info("Number of holes in the right hemisphere: " + str(rh_holes))
+    else:
+        logging.info("Could not find: " + rh_orig_nofix)
+
     # Extract info from logfile
 
     foundDefectsLH = False
     foundTopoLH = False
 
     for line_log_file in lines_log_file:
-        # Look for the number of holes in the left and right hemisphere
-        if "orig.nofix lhholes" in line_log_file:
-            lh_holes = line_log_file.split()[3]
-            lh_holes = lh_holes[:-1]
-            lh_holes = int(lh_holes)
-            rh_holes = line_log_file.split()[6]
-            logging.info("Number of holes in the left hemisphere: " + str(lh_holes))
-            logging.info("Number of holes in the right hemisphere: " + str(rh_holes))
-
         # Look for the number of defects
         if "defects found" in line_log_file and foundDefectsLH is False:
             lh_defects = line_log_file.split()[0]
