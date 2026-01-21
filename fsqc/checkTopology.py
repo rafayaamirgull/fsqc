@@ -78,7 +78,7 @@ def checkTopology(subjects_dir, subject):
     topo_time_lh = np.nan
     topo_time_rh = np.nan
 
-    # Extract info form surfaces
+    # Extract info from surfaces
 
     lh_orig_nofix = os.path.join(subjects_dir, subject, "surf", "lh.orig.nofix")
     if os.path.exists(lh_orig_nofix):
