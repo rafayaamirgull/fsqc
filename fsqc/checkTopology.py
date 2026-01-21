@@ -83,7 +83,7 @@ def checkTopology(subjects_dir, subject):
     lh_orig_nofix = os.path.join(subjects_dir, subject, "surf", "lh.orig.nofix")
     if os.path.exists(lh_orig_nofix):
         lh_euler = TriaMesh.read_fssurf(lh_orig_nofix).euler()
-        lh_holes = int(( 2 - lh_euler ) / 2)
+        lh_holes = int((2 - lh_euler ) / 2)
         logging.info("Number of holes in the left hemisphere: " + str(lh_holes))
     else:
         logging.info("Could not find: " + lh_orig_nofix)
@@ -91,7 +91,7 @@ def checkTopology(subjects_dir, subject):
     rh_orig_nofix = os.path.join(subjects_dir, subject, "surf", "rh.orig.nofix")
     if os.path.exists(rh_orig_nofix):
         rh_euler = TriaMesh.read_fssurf(rh_orig_nofix).euler()
-        rh_holes = int(( 2 - rh_euler ) / 2)
+        rh_holes = int((2 - rh_euler ) / 2)
         logging.info("Number of holes in the right hemisphere: " + str(rh_holes))
     else:
         logging.info("Could not find: " + rh_orig_nofix)
