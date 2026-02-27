@@ -16,11 +16,12 @@ RUN apt-get install -y --no-install-recommends \
     python3-pip \
     python3-setuptools \
     python3-wheel \
-    xvfb \
-    libxcb-xinerama0
+    libxcb-xinerama0 \
+    xvfb \    
+    libopengl0 \
+    libegl1-mesa
 
 # clone fsqc
-#RUN git clone --branch dev --single-branch https://github.com/Deep-MI/fsqc.git /app/fsqc
 RUN git clone https://github.com/Deep-MI/fsqc.git /app/fsqc
 
 # upgrade pip
@@ -37,7 +38,7 @@ ENV MPLCONFIGDIR=/tmp/mplconfigdir
 WORKDIR /app
 
 # Set entrypoint (non-interactive mode)
-ENTRYPOINT ["xvfb-run", "python3", "/app/fsqc/run_fsqc"]
+ENTRYPOINT ["python3", "/app/fsqc/run_fsqc"]
 
 ## Run app when the container launches (interactive mode)
 #CMD ["/bin/bash"]
