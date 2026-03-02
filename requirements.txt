@@ -12,4 +12,4 @@ glfw
 pillow
 pyrr
 PyQt6
-whippersnappy>=2.0.0
+whippersnappy==2.1.0

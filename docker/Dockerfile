@@ -17,9 +17,8 @@ RUN apt-get install -y --no-install-recommends \
     python3-setuptools \
     python3-wheel \
     libxcb-xinerama0 \
-    xvfb \    
-    libopengl0 \
-    libegl1-mesa
+    libosmesa6 \
+    libgl1
 
 # clone fsqc
 RUN git clone https://github.com/Deep-MI/fsqc.git /app/fsqc
