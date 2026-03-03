@@ -31,7 +31,6 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
     import os
 
     from whippersnappy import snap1
-    from whippersnappy import ViewType
 
     # -----------------------------------------------------------------------------
     # import surfaces and overlays
