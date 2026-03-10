@@ -26,7 +26,7 @@ For how to create your own Docker images see our [Docker guide](../docker/Docker
 ```bash
 singularity exec \
     -B /path/to/subjects/directory:/data \
-    -B /path/to/subjects/directory:/out \
+    -B /path/to/output/directory:/out \
     /home/user/my_singularity_images/fsqc-myimage.sif \
     /app/fsqc/run_fsqc \
     --subjects_dir /data \
