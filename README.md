@@ -465,7 +465,7 @@ ___
 - At least one structural MR image that was processed with Freesurfer 6.0, 7.x,
   or FastSurfer 1.1 or later (including the surface pipeline).
 
-- A Python version >= 3.8 is required to run this script.
+- A Python version >= 3.10 is required to run this script.
 
 - Required packages include (among others) the nibabel and skimage package for
   the core functionality, plus the matplotlib, pandas, and transform3d
