@@ -6,7 +6,7 @@ build-backend = 'setuptools.build_meta'
 name = 'fsqc'
 description = 'Quality control scripts for FastSurfer and FreeSurfer structural MRI data'
 license = {file = 'LICENSE'}
-requires-python = '>=3.9'
+requires-python = '>=3.10'
 authors = [
     {name = 'Kersten Diers', email = 'kersten.diers@dzne.de'},
     {name = 'Martin Reuter', email = 'martin.reuter@dzne.de'}
@@ -25,7 +25,6 @@ classifiers = [
     'Operating System :: Unix',
     'Operating System :: MacOS',
     'Programming Language :: Python :: 3 :: Only',
-    'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
