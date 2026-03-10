@@ -1,44 +1,57 @@
 # get OS
-FROM ubuntu:22.04
-
-# update OS
-RUN apt-get update
+FROM python:3.11
 
 # get additional packages
-RUN apt-get install -y --no-install-recommends \
-    gcc \
-    git \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     time \
     zlib1g-dev \
     libjpeg-dev \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python3-setuptools \
-    python3-wheel \
     libxcb-xinerama0 \
-    libosmesa6 \
-    libgl1
-
-# clone fsqc
-RUN git clone https://github.com/Deep-MI/fsqc.git /app/fsqc
+    libegl1 \
+    libgl1 \
+    libfontconfig1 && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 # upgrade pip
-RUN pip3 install --upgrade pip
+RUN pip install --upgrade pip
 
-# install additional python packages (not necessary if using pip install)
-RUN pip3 install -r /app/fsqc/requirements.txt
+# 
+RUN mkdir -p /app/fsqc
+
+#
+COPY pyproject.toml /app/fsqc
+COPY setup.py /app/fsqc
+COPY requirements.txt /app/fsqc
+COPY DESCRIPTION.md /app/fsqc
+COPY LICENSE /app/fsqc
+COPY VERSION /app/fsqc
+COPY fsqc /app/fsqc/fsqc
+COPY run_fsqc /app/fsqc
+
+# install fsqc as a package
+RUN pip install /app/fsqc
 
 # Add other environment variables
 ENV OMP_NUM_THREADS=1
 ENV MPLCONFIGDIR=/tmp/mplconfigdir
 
+# Suppress Mesa's shader-cache warning ("Failed to create //.cache …") that
+# appears when running as a non-standard user inside Docker where $HOME is
+# unset or points to a non-writable directory.
+ENV MESA_SHADER_CACHE_DISABLE=1
+
+# In order to find NVIDIA GPUs (--gpus all)
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+
+# Register the NVIDIA EGL ICD so libEGL finds the GPU driver
+RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
+    echo '{"file_format_version":"1.0.0","ICD":{"library_path":"libEGL_nvidia.so.0"}}' \
+    > /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
 # Set the working directory to /app
 WORKDIR /app
 
-# Set entrypoint (non-interactive mode)
-ENTRYPOINT ["python3", "/app/fsqc/run_fsqc"]
-
-## Run app when the container launches (interactive mode)
-#CMD ["/bin/bash"]
-
+# Set entrypoint
+ENTRYPOINT ["run_fsqc"]

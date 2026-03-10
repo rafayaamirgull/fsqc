@@ -6,12 +6,14 @@ The docker image will be based on Ubuntu, contain the fsqc scripts, the lapy and
 
 ## Build fsqc Docker image
 
-To build the docker image, execute the following command after traversing into the *docker* directory of this repository:
+To build the docker image, first download the software from its GitHub repository at `https://github.com/Deep-MI/fsqc`, or clone it directly via `git clone https://github.com/Deep-MI/fsqc`.
+
+Next, execute the following **docker** command from the project's main directory, i.e. `fsqc` (not `fsqc/fsqc`):
 
 ```bash
-docker build --rm -t deepmi/fsqcdocker -f Dockerfile .
+docker build --rm -t deepmi/fsqcdocker -f docker/Dockerfile .
 ```
-The name of the image will be `deepmi/fsqcdocker`, and it will be built from the `Dockerfile` configuration file from the *docker* directory. You have some flexibility in choosing the name, so this is just an example.
+The name of the image will be `deepmi/fsqcdocker`, and it will be built from the `Dockerfile` configuration file from the *docker* directory. You have some flexibility in choosing the name, so this is just an example. Note that the `fsqc` directory will be the *build context* for creating the docker image; if you do not want to include any particular files or directories into the image, add them to the `.dockerignore` file.
 
 The `--rm` flag will remove intermediate containers after a successful build; `-t` specifies the name of the image, and `-f` indicates the configuration file from which to build.
 
