@@ -208,7 +208,7 @@ def createScreenshots(
 
         lut = np.concatenate((lut, lutAdd), axis=0)
 
-    lutEnum = dict(zip(lut[:, 0], range(len(lut[:, 0]))))
+    lutEnum = dict(zip(lut[:, 0], range(len(lut[:, 0])), strict=True))
 
     lutTab = np.array(lut[:, (2, 3, 4, 5)] / 255, dtype="float32")
     lutTab[:, 3] = 1

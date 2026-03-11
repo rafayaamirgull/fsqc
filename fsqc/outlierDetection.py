@@ -307,7 +307,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "bankssts": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -319,7 +319,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "caudalanteriorcingulate": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -331,7 +331,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "caudalmiddlefrontal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -343,7 +343,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "cuneus": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -355,7 +355,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "entorhinal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -367,7 +367,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "fusiform": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -379,7 +379,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "inferiorparietal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -391,7 +391,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "inferiortemporal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -403,7 +403,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "isthmuscingulate": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -415,7 +415,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "lateraloccipital": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -427,7 +427,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "lateralorbitofrontal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -439,7 +439,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "lingual": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -451,7 +451,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "medialorbitofrontal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -463,7 +463,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "middletemporal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -475,7 +475,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "parahippocampal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -487,7 +487,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "paracentral": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -499,7 +499,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "parsopercularis": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -511,7 +511,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "parsorbitalis": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -523,7 +523,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "parstriangularis": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -535,7 +535,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "pericalcarine": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -547,7 +547,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "postcentral": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -559,7 +559,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "posteriorcingulate": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -571,7 +571,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "precentral": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -583,7 +583,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "precuneus": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -595,7 +595,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "rostralanteriorcingulate": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -607,7 +607,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "rostralmiddlefrontal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -619,7 +619,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "superiorfrontal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -631,7 +631,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "superiorparietal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -643,7 +643,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "superiortemporal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -655,7 +655,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "supramarginal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -667,7 +667,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "frontalpole": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -679,7 +679,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "temporalpole": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -691,7 +691,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "transversetemporal": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -703,7 +703,7 @@ def readAparcStats(path_aparc_stats, hemi):
                         + hemi
                         + "."
                         + "insula": dict(
-                            zip(col_headers[1:], [float(x) for x in line.split()[1:]])
+                            zip(col_headers[1:], [float(x) for x in line.split()[1:]], strict=True)
                         )
                     }
                 )
@@ -1072,10 +1072,10 @@ def outlierDetection(
         iqr = np.percentile(df, 75, axis=0) - np.percentile(df, 25, axis=0)
 
         sample_nonpar_lower = dict(
-            zip(df.columns, np.percentile(df, 25, axis=0) - 1.5 * iqr)
+            zip(df.columns, np.percentile(df, 25, axis=0) - 1.5 * iqr, strict=True)
         )
         sample_nonpar_upper = dict(
-            zip(df.columns, np.percentile(df, 75, axis=0) + 1.5 * iqr)
+            zip(df.columns, np.percentile(df, 75, axis=0) + 1.5 * iqr, strict=True)
         )
 
         sample_param_lower = dict(np.mean(df, axis=0) - 2 * np.std(df, axis=0))
