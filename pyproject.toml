@@ -28,6 +28,7 @@ classifiers = [
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
     'Natural Language :: English',
     'License :: OSI Approved :: MIT License',
     'Intended Audience :: Science/Research',
@@ -115,7 +116,6 @@ extend-exclude = [
 ]
 ignore = ["E501"] # line too long (should be enforced soon)
 
-
 [tool.ruff.lint]
 # https://docs.astral.sh/ruff/linter/#rule-selection
 select = [
@@ -124,7 +124,6 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "I",   # isort
-    # "SIM", # flake8-simplify
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -139,6 +138,12 @@ addopts = [
     "--durations=20",
     "--verbose",
 ]
+
+[tool.codespell]
+ignore-words-list = ''
+check-filenames = true
+check-hidden = true
+skip = './.git,./build,./.mypy_cache,./.pytest_cache'
 
 [tool.coverage.run]
 branch = true
