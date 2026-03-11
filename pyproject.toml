@@ -140,7 +140,6 @@ addopts = [
 ]
 
 [tool.codespell]
-ignore-words-list = ''
 check-filenames = true
 check-hidden = true
 skip = './.git,./build,./.mypy_cache,./.pytest_cache'
