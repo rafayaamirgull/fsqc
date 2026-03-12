@@ -26,15 +26,15 @@ For how to create your own Docker images see our [Docker guide](../docker/Docker
 ```bash
 singularity exec \
     -B /path/to/subjects/directory:/data \
-    -B /path/to/subjects/directory:/out \
+    -B /path/to/output/directory:/out \
     /home/user/my_singularity_images/fsqc-myimage.sif \
-    xvfb-run /app/fsqc/run_fsqc \
+    /app/fsqc/run_fsqc \
     --subjects_dir /data \
     --output_dir /out
 ```
 
 * The first two `-B` arguments mount your data directory and output directories into the singularity image (note that full, not relative, pathnames should be given). Inside the image, they are visible under the name following the colon (in this case `/path_to_filename_inside_container` and `/path_to_output_directory_inside_container`, but these can be different). From within the singularity image / container, there will be read and write access to the directories that are mounted into the image (unless specified otherwise).
 * The next part of the command is the name of the Singularity image, which is `fsqc-myimage.sif` in this example, but can be freely chosen depending on what was set during the build process (see above). In this example, the image is located in `/home/user/my_singularity_images`, but the specific path will likely be different on your local system.
-* For the Singularity image, we also have to explicitly specify the command that we to want run, i.e. `/app/fsqc/run_fsqc`. If off-screen rendering is intended, for example surface rendering via the `--surfaces` or `--surfaces-html` arguments during processing on a server without a dedicated display, we also have to add the `xvfb-run` program: `xvfb-run /app/fsqc/run_fsqc`. `xvfb-run` is a command that lets you run graphical programs on a computer without a real screen, i.e. creates a virtual graphical display that will be used for rendering. If no off-screen rendering takes place, it does not matter if `xvfb-run` is added or omitted.
+* For the Singularity image, we also have to explicitly specify the command that we want to run, i.e. `/app/fsqc/run_fsqc`.
 * After that, all other flags are identical to the ones that are used for the `fsqc` program (which are explained on the main page and the help message of the program). That is, there can be more options than specified in this example command. Note that file- and pathnames need to correspond to the targets of the file / directory mappings within the singularity image, not to the local system.
 * The `--shape` option is currently not supported for running in conjunction with Docker or Singularity, since it relies on the FreeSurfer software package, which is not included in our Docker or Singularity images.

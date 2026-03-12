@@ -6,7 +6,7 @@ build-backend = 'setuptools.build_meta'
 name = 'fsqc'
 description = 'Quality control scripts for FastSurfer and FreeSurfer structural MRI data'
 license = {file = 'LICENSE'}
-requires-python = '>=3.9'
+requires-python = '>=3.10'
 authors = [
     {name = 'Kersten Diers', email = 'kersten.diers@dzne.de'},
     {name = 'Martin Reuter', email = 'martin.reuter@dzne.de'}
@@ -25,10 +25,10 @@ classifiers = [
     'Operating System :: Unix',
     'Operating System :: MacOS',
     'Programming Language :: Python :: 3 :: Only',
-    'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
     'Natural Language :: English',
     'License :: OSI Approved :: MIT License',
     'Intended Audience :: Science/Research',
@@ -116,7 +116,6 @@ extend-exclude = [
 ]
 ignore = ["E501"] # line too long (should be enforced soon)
 
-
 [tool.ruff.lint]
 # https://docs.astral.sh/ruff/linter/#rule-selection
 select = [
@@ -125,7 +124,6 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "I",   # isort
-    # "SIM", # flake8-simplify
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -140,6 +138,11 @@ addopts = [
     "--durations=20",
     "--verbose",
 ]
+
+[tool.codespell]
+check-filenames = true
+check-hidden = true
+skip = './.git,./build,./.mypy_cache,./.pytest_cache'
 
 [tool.coverage.run]
 branch = true
