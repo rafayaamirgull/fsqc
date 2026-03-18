@@ -2,7 +2,7 @@
 
 Here we provide a [`Dockerfile`](Dockerfile) that can be used to create a Docker image and subsequently run the fsqc scripts within a Docker container. The main advantage of using virtualization technologies like Docker or Singularity is to create a controlled environment, with fixed versions of installable packages, which greatly helps with the stability and reproducibility of the analyses.
 
-The docker image will be based on Ubuntu, contain the fsqc scripts, the lapy and brainprint libraries, and any additionally required packages from the Ubuntu distribution.
+The docker image is based on the official Python 3.11 image (Debian-based) and contains the fsqc scripts, the lapy and brainprint libraries, and any additionally required system packages.
 
 ## Build fsqc Docker image
 
