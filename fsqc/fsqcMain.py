@@ -2488,7 +2488,7 @@ def _do_fsqc(argsDict):
                                         "fornixShapeEV{:0>3}".format,
                                         range(FORNIX_N_EIGEN),
                                     ),
-                                    fornixShapeOutput, 
+                                    fornixShapeOutput,
                                     strict=True,
                                 )
                             )
