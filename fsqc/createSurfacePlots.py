@@ -30,8 +30,7 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
 
     import os
 
-    from whippersnappy import core
-    from whippersnappy.types import ViewType
+    from whippersnappy import ViewType, snap1
 
     # -----------------------------------------------------------------------------
     # import surfaces and overlays
@@ -82,30 +81,30 @@ def createSurfacePlots(SUBJECT, SUBJECTS_DIR, SURFACES_OUTDIR, VIEWS, FASTSURFER
             elif view == "right":
                 wview = ViewType.RIGHT
 
-            core.snap1(
-                meshpath=triaPialL,
-                annotpath=annotL,
+            snap1(
+                mesh=triaPialL,
+                annot=annotL,
                 outpath=fpath_lp,
                 view=wview,
                 specular=False
             )
-            core.snap1(
-                meshpath=triaPialR,
-                annotpath=annotR,
+            snap1(
+                mesh=triaPialR,
+                annot=annotR,
                 outpath=fpath_rp,
                 view=wview,
                 specular=False
             )
-            core.snap1(
-                meshpath=triaInflL,
-                annotpath=annotL,
+            snap1(
+                mesh=triaInflL,
+                annot=annotL,
                 outpath=fpath_li,
                 view=wview,
                 specular=False
             )
-            core.snap1(
-                meshpath=triaInflR,
-                annotpath=annotR,
+            snap1(
+                mesh=triaInflR,
+                annot=annotR,
                 outpath=fpath_ri,
                 view=wview,
                 specular=False

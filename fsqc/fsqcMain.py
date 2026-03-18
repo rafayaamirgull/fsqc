@@ -323,7 +323,7 @@ def get_help(print_help=True, return_help=False):
     At least one subject whose structural MR image was processed with Freesurfer
     6.0 or later, or FastSurfer v1.1 or later (including the surface pipeline).
 
-    A Python version >= 3.8 is required to run this script.
+    A Python version >= 3.10 is required to run this script.
 
     Required packages include (among others) the nibabel and skimage package for
     the core functionality, plus the the matplotlib, pandas, and transform3d
@@ -2439,6 +2439,7 @@ def _do_fsqc(argsDict):
                                         range(FORNIX_N_EIGEN),
                                     ),
                                     fornixShapeOutput,
+                                    strict=True,
                                 )
                             )
                         }
@@ -2456,6 +2457,7 @@ def _do_fsqc(argsDict):
                                         range(FORNIX_N_EIGEN),
                                     ),
                                     np.full(FORNIX_N_EIGEN, np.nan),
+                                    strict=True,
                                 )
                             )
                         }
@@ -2487,6 +2489,7 @@ def _do_fsqc(argsDict):
                                         range(FORNIX_N_EIGEN),
                                     ),
                                     fornixShapeOutput,
+                                    strict=True,
                                 )
                             )
                         }
@@ -2900,6 +2903,7 @@ def _do_fsqc(argsDict):
                                     "fornixShapeEV{:0>3}".format, range(FORNIX_N_EIGEN)
                                 ),
                                 fornixShapeOutput,
+                                strict=True,
                             )
                         )
                     }

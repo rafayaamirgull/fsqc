@@ -1,13 +1,19 @@
-#
-misc
-deprecated
-testing
+# tests
+tests
+.pytest_cache/
+.ruff_cache/
+junit-results.xml
+coverage.xml
 
-# macOS
+# OS files
 .DS_Store
+Thumbs.db
 
-#
-.flake8
+# documentation
+howto*
+
+# images
+*sif
 
 #
 .ipynb_checkpoints
@@ -22,19 +28,19 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.installed.cfg
 build/
-develop-eggs/
 dist/
 downloads/
+develop-eggs/
 eggs/
 .eggs/
+*.egg-info/
+*.egg
 lib/
 lib64/
 parts/
 sdist/
 var/
 wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 MANIFEST
