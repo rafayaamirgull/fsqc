@@ -2438,7 +2438,7 @@ def _do_fsqc(argsDict):
                                         "fornixShapeEV{:0>3}".format,
                                         range(FORNIX_N_EIGEN),
                                     ),
-                                    fornixShapeOutput, 
+                                    fornixShapeOutput,
                                     strict=True,
                                 )
                             )
@@ -2456,7 +2456,7 @@ def _do_fsqc(argsDict):
                                         "fornixShapeEV{:0>3}".format,
                                         range(FORNIX_N_EIGEN),
                                     ),
-                                    np.full(FORNIX_N_EIGEN, np.nan), 
+                                    np.full(FORNIX_N_EIGEN, np.nan),
                                     strict=True,
                                 )
                             )
