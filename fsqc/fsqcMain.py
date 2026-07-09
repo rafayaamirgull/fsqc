@@ -1547,6 +1547,7 @@ def _do_fsqc(argsDict):
 
     from fsqc.checkCCSize import checkCCSize
     from fsqc.checkContrast import checkContrast
+    from fsqc.checkMotion import checkMotion
     from fsqc.checkRotation import checkRotation
     from fsqc.checkSNR import checkSNR
     from fsqc.checkTopology import checkTopology
@@ -1803,6 +1804,44 @@ def _do_fsqc(argsDict):
                     if argsDict["exit_on_error"] is True:
                         raise
 
+                # check motion
+                try:
+                    motion_metrics = checkMotion(
+                        subjects_dir=argsDict["subjects_dir"], 
+                        subject=subject,
+                        ref_image="norm.mgz",
+                        headmask_image="brainmask.mgz",
+                        qi2_airmask_image=None,                        
+                    )
+                    motion_efc = motion_metrics["efc"]
+                    motion_qi2 = motion_metrics["qi2"]
+                    motion_fber = motion_metrics["fber"]
+                    motion_snr = motion_metrics["snr"]
+                    motion_bg_mean = motion_metrics["bg_mean"]
+                    motion_bg_median = motion_metrics["bg_median"]
+                    motion_bg_std = motion_metrics["bg_std"]
+                    motion_bg_mad = motion_metrics["bg_mad"]
+                    motion_bg_p05 = motion_metrics["bg_p05"]
+                    motion_bg_p95 = motion_metrics["bg_p95"]
+                    motion_bg_n = motion_metrics["bg_n"]
+                except:
+                    logging.error("ERROR: Motion failed for " + subject)
+                    logging.error("Reason: " + str(e))
+                    motion_efc = np.nan
+                    motion_qi2 = np.nan
+                    motion_fber = np.nan
+                    motion_snr = np.nan
+                    motion_bg_mean = np.nan
+                    motion_bg_median = np.nan
+                    motion_bg_std = np.nan
+                    motion_bg_mad = np.nan
+                    motion_bg_p05 = np.nan
+                    motion_bg_p95 = np.nan
+                    motion_bg_n = np.nan
+                    metrics_status = 1
+                    if argsDict["exit_on_error"] is True:
+                        raise
+
                 # store data
                 metricsDict[subject].update(
                     {
@@ -1822,6 +1861,17 @@ def _do_fsqc(argsDict):
                         "rot_tal_x": rot_tal_x,
                         "rot_tal_y": rot_tal_y,
                         "rot_tal_z": rot_tal_z,
+                        "motion_efc" : motion_efc,
+                        "motion_qi2" : motion_qi2,
+                        "motion_fber" : motion_fber,
+                        "motion_snr" : motion_snr,
+                        "motion_bg_mean" : motion_bg_mean,
+                        "motion_bg_median" : motion_bg_median,
+                        "motion_bg_std" : motion_bg_std,
+                        "motion_bg_mad" : motion_bg_mad,
+                        "motion_bg_p05" : motion_bg_p05,
+                        "motion_bg_p95" : motion_bg_p95,
+                        "motion_bg_n" : motion_bg_n,                        
                     }
                 )
 
@@ -2850,6 +2900,17 @@ def _do_fsqc(argsDict):
                 "rot_tal_x",
                 "rot_tal_y",
                 "rot_tal_z",
+                "motion_efc",
+                "motion_qi2",
+                "motion_fber",
+                "motion_snr",
+                "motion_bg_mean",
+                "motion_bg_median",
+                "motion_bg_std",
+                "motion_bg_mad",
+                "motion_bg_p05",
+                "motion_bg_p95",
+                "motion_bg_n",
             ]
         )
 
