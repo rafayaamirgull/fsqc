@@ -1810,7 +1810,6 @@ def _do_fsqc(argsDict):
                         subjects_dir=argsDict["subjects_dir"], 
                         subject=subject,
                         ref_image="norm.mgz",
-                        headmask_image="brainmask.mgz",
                         qi2_airmask_image=None,                        
                     )
                     motion_efc = motion_metrics["efc"]

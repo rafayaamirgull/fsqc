@@ -118,6 +118,64 @@ def computeConformRotmaskFromFiles(source_file, target_file, out_file=None, thre
     return rotmask
 
 
+def computeHeadmaskOtsu(img, rotmask=None):
+    """
+    Compute a head mask from image intensities using Otsu thresholding.
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        3D image array.
+    rotmask : numpy.ndarray or None, optional
+        Optional rotmask where non-zero voxels are excluded from threshold
+        estimation and output mask.
+
+    Returns
+    -------
+    numpy.ndarray
+        Binary head mask (uint8, 1 = foreground/head).
+    """
+    import numpy as np
+
+    finite = np.isfinite(img)
+    if rotmask is not None:
+        finite = np.logical_and(finite, rotmask == 0)
+
+    data = img[finite]
+    data = data[data > 0]
+    if data.size == 0:
+        return np.zeros_like(img, dtype=np.uint8)
+
+    # Otsu threshold from a fixed histogram for reproducibility.
+    hist, bin_edges = np.histogram(data, bins=256)
+    hist = hist.astype(np.float64)
+
+    if not np.any(hist):
+        return np.zeros_like(img, dtype=np.uint8)
+
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    weight1 = np.cumsum(hist)
+    weight2 = np.cumsum(hist[::-1])[::-1]
+
+    mu1 = np.cumsum(hist * bin_centers) / np.maximum(weight1, 1.0)
+    mu2 = (
+        np.cumsum((hist * bin_centers)[::-1]) / np.maximum(weight2[::-1], 1.0)
+    )[::-1]
+
+    sigma_b2 = weight1[:-1] * weight2[1:] * (mu1[:-1] - mu2[1:]) ** 2
+    if sigma_b2.size == 0:
+        threshold = float(np.median(data))
+    else:
+        threshold = float(bin_centers[np.argmax(sigma_b2)])
+
+    headmask = np.zeros_like(img, dtype=np.uint8)
+    headmask[img > threshold] = 1
+    if rotmask is not None:
+        headmask[rotmask > 0] = 0
+
+    return headmask
+
+
 def efc(img, framemask=None):
     """
     Compute MRIQC's entropy focus criterion (EFC).
@@ -269,7 +327,7 @@ def checkMotion(
     subjects_dir,
     subject,
     ref_image="norm.mgz",
-    headmask_image="brainmask.mgz",
+    headmask_out_image=None,
     qi2_airmask_image=None,
 ):
     """
@@ -283,11 +341,13 @@ def checkMotion(
         The name of the subject.
     ref_image : str, optional
         Reference MRI volume under ``mri/`` (default: ``norm.mgz``).
-    headmask_image : str, optional
-        Head/brain mask under ``mri/`` used to define foreground/background.
+    headmask_out_image : str or None, optional
+        If provided, save the computed Otsu headmask under ``mri/``. Absolute
+        paths are also accepted.
     qi2_airmask_image : str or None, optional
         Optional dedicated air mask under ``mri/`` for QI2. If omitted,
-        the complement of ``headmask_image`` (minus computed ``rotmask``) is used.
+        the complement of the computed ``headmask`` (minus computed ``rotmask``)
+        is used.
 
     Returns
     -------
@@ -326,28 +386,8 @@ def checkMotion(
             "bg_n": 0,
         }
 
-    headmask_path = os.path.join(subjects_dir, subject, "mri", headmask_image)
-    if not os.path.exists(headmask_path):
-        warnings.warn(
-            "WARNING: could not open " + headmask_path + ", returning NaNs.",
-            stacklevel=2,
-        )
-        return {
-            "efc": np.nan,
-            "qi2": np.nan,
-            "fber": np.nan,
-            "snr": np.nan,
-            "bg_mean": np.nan,
-            "bg_median": np.nan,
-            "bg_std": np.nan,
-            "bg_mad": np.nan,
-            "bg_p05": np.nan,
-            "bg_p95": np.nan,
-            "bg_n": 0,
-        }
-
-    img = nib.load(ref_path).get_fdata()
-    headmask = nib.load(headmask_path).get_fdata()
+    ref_img = nib.load(ref_path)
+    img = ref_img.get_fdata()
 
     # Try to build a rotmask by mapping a pre-conform source to ref_image.
     rotmask = None
@@ -380,6 +420,21 @@ def checkMotion(
             "or orig/001.mgz), proceeding without rotmask.",
             stacklevel=2,
         )
+
+    headmask = computeHeadmaskOtsu(img, rotmask=rotmask)
+
+    if headmask_out_image is not None:
+        if os.path.isabs(headmask_out_image):
+            headmask_out_path = headmask_out_image
+        else:
+            headmask_out_path = os.path.join(subjects_dir, subject, "mri", headmask_out_image)
+
+        _, ext = os.path.splitext(headmask_out_path)
+        if ext.lower() in [".mgz", ".mgh"]:
+            headmask_img = nib.MGHImage(headmask.astype(np.float32), ref_img.affine)
+        else:
+            headmask_img = nib.nifti1.Nifti1Image(headmask.astype("uint8"), ref_img.affine)
+        nib.save(headmask_img, headmask_out_path)
 
     if qi2_airmask_image is not None:
         airmask_path = os.path.join(subjects_dir, subject, "mri", qi2_airmask_image)
