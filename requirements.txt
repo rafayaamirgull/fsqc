@@ -13,3 +13,4 @@ pillow
 pyrr
 PyQt6
 whippersnappy>=2.1.0
+neuroreg>=0.10.1
