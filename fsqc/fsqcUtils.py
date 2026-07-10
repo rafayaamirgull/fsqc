@@ -152,297 +152,38 @@ def applyTransform(img_file, out_file, mat_file, interp):
     """
     import os
 
-    import nibabel as nb
     import numpy as np
-    from scipy import ndimage
-
-    # get image
-    img = nb.load(img_file)
-    img_data = img.get_fdata()
+    from neuroreg.image import load_image, reslice_r2r_image, save_image
+    from neuroreg.transforms import read_transform_as_lta
 
     #
     _, mat_file_ext = os.path.splitext(mat_file)
 
-    # get matrix
-    if mat_file_ext == ".xfm":
-        raise Exception(
-            "ERROR: xfm matrices not (yet) supported. Please convert to lta format"
-        )
-    elif mat_file_ext == ".lta":
-        # get lta matrix
-        lta = readLTA(mat_file)
-        # get vox2vox transform
-        if lta["type"] == 1:
-            # compute vox2vox from ras2ras as vox2ras2ras2vox transform:
-            # vox2ras from input image (source)
-            # ras2ras from make_upright.lta
-            # ras2vox from upright image (target)
-            # m = np.matmul(np.linalg.inv(upr.affine), np.matmul(lta['lta'], img.affine))
-            raise Exception("ERROR: lta type 1 (ras2ras) not supported yet")
-        elif lta["type"] == 0:
-            # vox2vox transform
-            m = lta["lta"]
-    else:
+    if mat_file_ext not in [".lta", ".xfm"]:
         raise Exception("ERROR: matrices must be either xfm or lta format")
 
-    # apply transform
-    if interp == "nearest":
-        img_data_interp = ndimage.affine_transform(img_data, np.linalg.inv(m), order=0)
-    elif interp == "cubic":
-        img_data_interp = ndimage.affine_transform(img_data, np.linalg.inv(m), order=3)
-    else:
+    if interp not in ["nearest", "cubic"]:
         raise Exception("ERROR: interpolation must be either nearest or cubic")
 
-    # write image
-    img_interp = nb.nifti1.Nifti1Image(img_data_interp, img.affine)
-    nb.save(img_interp, out_file)
+    try:
+        mov_img = load_image(img_file)
 
+        # Read transform through neuroreg's shared transform backend.
+        lta = read_transform_as_lta(mat_file, src_img=img_file, dst_img=img_file)
+        r2r = lta.r2r()
 
-# ------------------------------------------------------------------------------
-
-
-def readLTA(file):
-    """
-    It reads a LTA (Linear Transform Array) file and extracts transformation information.
-
-    Parameters
-    ----------
-    file : str
-        Path to the LTA file.
-
-    Returns
-    -------
-    dict
-        A dictionary containing transformation information, including type, number of transforms,
-        mean, sigma, and transformation matrices for source and destination volumes.
-    """
-    import re
-
-    import numpy as np
-
-    with open(file) as f:
-        lta = f.readlines()
-    d = dict()
-    i = 0
-    while i < len(lta):
-        if re.match("type", lta[i]) is not None:
-            d["type"] = int(
-                re.sub("=", "", re.sub("[a-z]+", "", re.sub("#.*", "", lta[i]))).strip()
-            )
-            i += 1
-        elif re.match("nxforms", lta[i]) is not None:
-            d["nxforms"] = int(
-                re.sub("=", "", re.sub("[a-z]+", "", re.sub("#.*", "", lta[i]))).strip()
-            )
-            i += 1
-        elif re.match("mean", lta[i]) is not None:
-            d["mean"] = [
-                float(x)
-                for x in re.split(
-                    " +",
-                    re.sub(
-                        "=", "", re.sub("[a-z]+", "", re.sub("#.*", "", lta[i]))
-                    ).strip(),
-                )
-            ]
-            i += 1
-        elif re.match("sigma", lta[i]) is not None:
-            d["sigma"] = float(
-                re.sub("=", "", re.sub("[a-z]+", "", re.sub("#.*", "", lta[i]))).strip()
-            )
-            i += 1
-        elif (
-            re.match(
-                "-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+", lta[i]
-            )
-            is not None
-        ):
-            d["lta"] = np.array(
-                [
-                    [
-                        float(x)
-                        for x in re.split(
-                            " +",
-                            re.match(
-                                "-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+",
-                                lta[i],
-                            ).string.strip(),
-                        )
-                    ],
-                    [
-                        float(x)
-                        for x in re.split(
-                            " +",
-                            re.match(
-                                "-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+",
-                                lta[i + 1],
-                            ).string.strip(),
-                        )
-                    ],
-                    [
-                        float(x)
-                        for x in re.split(
-                            " +",
-                            re.match(
-                                "-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+",
-                                lta[i + 2],
-                            ).string.strip(),
-                        )
-                    ],
-                    [
-                        float(x)
-                        for x in re.split(
-                            " +",
-                            re.match(
-                                "-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+-*[0-9]\.\S+\W+",
-                                lta[i + 3],
-                            ).string.strip(),
-                        )
-                    ],
-                ]
-            )
-            i += 4
-        elif re.match("src volume info", lta[i]) is not None:
-            while i < len(lta) and re.match("dst volume info", lta[i]) is None:
-                if re.match("valid", lta[i]) is not None:
-                    d["src_valid"] = int(
-                        re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                    )
-                elif re.match("filename", lta[i]) is not None:
-                    d["src_filename"] = re.split(
-                        " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                    )
-                elif re.match("volume", lta[i]) is not None:
-                    d["src_volume"] = [
-                        int(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("voxelsize", lta[i]) is not None:
-                    d["src_voxelsize"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("xras", lta[i]) is not None:
-                    d["src_xras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("yras", lta[i]) is not None:
-                    d["src_yras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("zras", lta[i]) is not None:
-                    d["src_zras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("cras", lta[i]) is not None:
-                    d["src_cras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                i += 1
-        elif re.match("dst volume info", lta[i]) is not None:
-            while i < len(lta) and re.match("src volume info", lta[i]) is None:
-                if re.match("valid", lta[i]) is not None:
-                    d["dst_valid"] = int(
-                        re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                    )
-                elif re.match("filename", lta[i]) is not None:
-                    d["dst_filename"] = re.split(
-                        " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                    )
-                elif re.match("volume", lta[i]) is not None:
-                    d["dst_volume"] = [
-                        int(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("voxelsize", lta[i]) is not None:
-                    d["dst_voxelsize"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("xras", lta[i]) is not None:
-                    d["dst_xras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("yras", lta[i]) is not None:
-                    d["dst_yras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("zras", lta[i]) is not None:
-                    d["dst_zras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                elif re.match("cras", lta[i]) is not None:
-                    d["dst_cras"] = [
-                        float(x)
-                        for x in re.split(
-                            " +", re.sub(".*=", "", re.sub("#.*", "", lta[i])).strip()
-                        )
-                    ]
-                i += 1
-        else:
-            i += 1
-    # create full transformation matrices
-    d["src"] = np.concatenate(
-        (
-            np.concatenate(
-                (
-                    np.c_[d["src_xras"]],
-                    np.c_[d["src_yras"]],
-                    np.c_[d["src_zras"]],
-                    np.c_[d["src_cras"]],
-                ),
-                axis=1,
-            ),
-            np.array([0.0, 0.0, 0.0, 1.0], ndmin=2),
-        ),
-        axis=0,
-    )
-    d["dst"] = np.concatenate(
-        (
-            np.concatenate(
-                (
-                    np.c_[d["dst_xras"]],
-                    np.c_[d["dst_yras"]],
-                    np.c_[d["dst_zras"]],
-                    np.c_[d["dst_cras"]],
-                ),
-                axis=1,
-            ),
-            np.array([0.0, 0.0, 0.0, 1.0], ndmin=2),
-        ),
-        axis=0,
-    )
-    # return
-    return d
+        mapped_img = reslice_r2r_image(
+            mov_img,
+            r2r,
+            target_affine=np.asarray(mov_img.affine, dtype=np.float64),
+            target_shape=tuple(int(v) for v in mov_img.shape[:3]),
+            mode=interp,
+            padding_mode="zeros",
+            keep_dtype=False,
+        )
+        save_image(mapped_img, out_file)
+    except Exception as exc:
+        raise Exception("ERROR: neuroreg failed while applying transform: " + str(exc)) from exc
 
 
 # ------------------------------------------------------------------------------
