@@ -6,6 +6,7 @@ numpy
 pandas
 scipy
 scikit-image
+scikit-learn
 transforms3d
 pyopengl
 glfw

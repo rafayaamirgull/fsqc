@@ -2,15 +2,24 @@
 This module provides MRIQC-style image quality metrics related to motion/noise.
 
 Implemented measures:
-- EFC  : Entropy Focus Criterion
-- QI2  : Mortamet's quality index 2
-- FBER : Foreground-Background Energy Ratio
-- SNR  : Signal-to-Noise Ratio
-- BG   : Background summary statistics
+- EFC       : Entropy Focus Criterion
+- QI2       : Mortamet's quality index 2
+- FBER      : Foreground-Background Energy Ratio
+- SNR       : Signal-to-Noise Ratio, averaged over GM/WM/CSF tissue masks
+              taken from a FreeSurfer/FastSurfer segmentation
+- SNR_HEAD  : Signal-to-Noise Ratio over the whole (Otsu-thresholded) head
+              mask, requiring no segmentation
+- BG        : Background summary statistics
 """
 
 
 # -----------------------------------------------------------------------------
+
+# FreeSurferColorLUT label IDs used to build tissue masks for SNR estimation.
+# WM/GM lists match fsqc.checkSNR.checkSNR for consistency across the codebase.
+_WM_LABELS = [2, 41, 7, 46, 251, 252, 253, 254, 255, 77, 78, 79]
+_GM_LABELS = [3, 42]
+_CSF_LABELS = [24, 4, 43, 5, 44, 14, 15]
 
 
 def _airmask_from_headmask(headmask, rotmask=None):
@@ -23,6 +32,18 @@ def _airmask_from_headmask(headmask, rotmask=None):
         airmask[rotmask > 0] = 0
 
     return airmask
+
+
+def _tissue_mask_from_labels(seg_data, labels, nb_erode=0):
+    """Build a binary mask for the given segmentation label IDs, optionally eroded."""
+    import numpy as np
+    from skimage.morphology import binary_erosion
+
+    mask = np.isin(seg_data, labels).astype(np.uint8)
+    if nb_erode > 0:
+        mask = binary_erosion(mask, np.ones((nb_erode, nb_erode, nb_erode))).astype(np.uint8)
+
+    return mask
 
 
 def computeConformRotmask(source_img, target_img, threshold=0.5):
@@ -105,7 +126,7 @@ def computeConformRotmaskFromFiles(source_file, target_file, out_file=None, thre
     src_img = nib.load(source_file)
     tgt_img = nib.load(target_file)
 
-    rotmask = computeConformRotmask(src_img=src_img, target_img=tgt_img, threshold=threshold)
+    rotmask = computeConformRotmask(source_img=src_img, target_img=tgt_img, threshold=threshold)
 
     if out_file is not None:
         _, ext = os.path.splitext(out_file)
@@ -251,15 +272,65 @@ def snr(mu_fg, sigma_fg, n):
     return float(mu_fg / (sigma_fg * np.sqrt(n / (n - 1))))
 
 
+def snr_tissue(img, aseg_data, aparc_data, nb_erode_wm=3, nb_erode_csf=1):
+    """
+    Compute MRIQC-style SNR from FreeSurfer/FastSurfer tissue segmentations.
+
+    Builds gray matter, white matter and CSF (incl. ventricles) masks from
+    ``aseg_data``/``aparc_data`` and computes :func:`snr` for each. White
+    matter and CSF are eroded to reduce partial-volume contamination; gray
+    matter is not eroded (the cortical ribbon is too thin).
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        3D reference intensity image.
+    aseg_data : numpy.ndarray
+        FreeSurfer/FastSurfer ``aseg`` segmentation array, same shape as ``img``.
+    aparc_data : numpy.ndarray
+        FreeSurfer/FastSurfer ``aparc+aseg``-style segmentation array, same
+        shape as ``img``.
+    nb_erode_wm : int, optional
+        Erosion (in voxels) applied to the white matter mask (default: 3).
+    nb_erode_csf : int, optional
+        Erosion (in voxels) applied to the CSF mask (default: 1).
+
+    Returns
+    -------
+    dict
+        Dictionary with keys ``snr`` (mean over available tissue classes),
+        ``snr_gm``, ``snr_wm`` and ``snr_csf``.
+    """
+    import numpy as np
+
+    gm_mask = _tissue_mask_from_labels(aseg_data, _GM_LABELS, nb_erode=0)
+    wm_mask = _tissue_mask_from_labels(aparc_data, _WM_LABELS, nb_erode=nb_erode_wm)
+    csf_mask = _tissue_mask_from_labels(aseg_data, _CSF_LABELS, nb_erode=nb_erode_csf)
+
+    result = {}
+    for key, mask in (("snr_gm", gm_mask), ("snr_wm", wm_mask), ("snr_csf", csf_mask)):
+        fg = img[mask > 0]
+        result[key] = (
+            snr(float(np.median(fg)), float(np.std(fg)), int(fg.size))
+            if fg.size > 0
+            else np.nan
+        )
+
+    values = [v for v in result.values() if np.isfinite(v)]
+    result["snr"] = float(np.mean(values)) if values else np.nan
+
+    return result
+
+
 def bg(img, headmask, rotmask=None):
     """
     Compute background summary statistics akin to MRIQC's summary_bg_* measures.
     """
     import numpy as np
+    from scipy.stats import kurtosis
 
     airmask = _airmask_from_headmask(headmask, rotmask=rotmask)
     data = np.nan_to_num(img[airmask > 0], nan=0.0, posinf=0.0, neginf=0.0)
-    data = data[data >= 0]
 
     if data.size == 0:
         return {
@@ -267,6 +338,7 @@ def bg(img, headmask, rotmask=None):
             "bg_median": np.nan,
             "bg_std": np.nan,
             "bg_mad": np.nan,
+            "bg_kurtosis": np.nan,
             "bg_p05": np.nan,
             "bg_p95": np.nan,
             "bg_n": 0,
@@ -277,7 +349,8 @@ def bg(img, headmask, rotmask=None):
         "bg_mean": float(np.mean(data)),
         "bg_median": float(med),
         "bg_std": float(np.std(data)),
-        "bg_mad": float(np.median(np.abs(data - med))),
+        "bg_mad": float(np.median(np.abs(data - med)) / 0.6745),
+        "bg_kurtosis": float(kurtosis(data)),
         "bg_p05": float(np.percentile(data, 5)),
         "bg_p95": float(np.percentile(data, 95)),
         "bg_n": int(data.size),
@@ -291,7 +364,8 @@ def qi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_elements=32
     Lower values are better.
     """
     import numpy as np
-    from scipy.stats import chi2, gaussian_kde
+    from scipy.stats import chi2
+    from sklearn.neighbors import KernelDensity
 
     np.random.seed(1191935)
 
@@ -306,16 +380,15 @@ def qi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_elements=32
         return np.nan
 
     data = data * (100.0 / p99)
-    modelx = data if len(data) < int(max_voxels) else np.random.choice(data, size=int(max_voxels), replace=False)
+    modelx = data if len(data) < int(max_voxels) else np.random.choice(data, size=int(max_voxels))
 
     x_grid = np.linspace(0.0, 110.0, 1000)
 
     # Estimate empirical PDF and fit a chi-square model on the same support.
-    kde = gaussian_kde(modelx)
-    kde_pdf = kde(x_grid)
+    kde_skl = KernelDensity(kernel="gaussian", bandwidth=4.0).fit(modelx[:, np.newaxis])
+    kde_pdf = np.exp(kde_skl.score_samples(x_grid[:, np.newaxis]))
 
     kdethi = int(np.argmax(kde_pdf[::-1] > kde_pdf.max() * 0.5))
-    kdethi = max(kdethi, 1)
 
     params = chi2.fit(modelx, coil_elements)
     chi_pdf = chi2.pdf(x_grid, *params[:-2], loc=params[-2], scale=params[-1])
@@ -329,6 +402,10 @@ def checkMotion(
     ref_image="norm.mgz",
     headmask_out_image=None,
     qi2_airmask_image=None,
+    aseg_image="aseg.mgz",
+    aparc_image="aparc+aseg.mgz",
+    nb_erode_wm=3,
+    nb_erode_csf=1,
 ):
     """
     Compute MRIQC-style EFC, QI2, FBER, SNR and BG measures for a subject.
@@ -348,13 +425,26 @@ def checkMotion(
         Optional dedicated air mask under ``mri/`` for QI2. If omitted,
         the complement of the computed ``headmask`` (minus computed ``rotmask``)
         is used.
+    aseg_image : str, optional
+        FreeSurfer/FastSurfer ``aseg`` segmentation under ``mri/``, used for the
+        gray matter and CSF SNR masks (default: ``aseg.mgz``).
+    aparc_image : str, optional
+        FreeSurfer/FastSurfer ``aparc+aseg``-style segmentation under ``mri/``,
+        used for the white matter SNR mask (default: ``aparc+aseg.mgz``; pass
+        e.g. ``aparc.DKTatlas+aseg.deep.mgz`` for FastSurfer output).
+    nb_erode_wm : int, optional
+        Erosion (in voxels) applied to the white matter SNR mask (default: 3).
+    nb_erode_csf : int, optional
+        Erosion (in voxels) applied to the CSF SNR mask (default: 1).
 
     Returns
     -------
     dict
-        Dictionary with keys ``efc``, ``qi2``, ``fber``, ``snr`` and BG summary
+        Dictionary with keys ``efc``, ``qi2``, ``fber``, ``snr`` (mean SNR over
+        GM/WM/CSF tissue masks), ``snr_gm``, ``snr_wm``, ``snr_csf``,
+        ``snr_head`` (whole-head SNR, requires no segmentation), and BG summary
         statistics: ``bg_mean``, ``bg_median``, ``bg_std``, ``bg_mad``,
-        ``bg_p05``, ``bg_p95``, ``bg_n``.
+        ``bg_kurtosis``, ``bg_p05``, ``bg_p95``, ``bg_n``.
     """
     import logging
     import os
@@ -377,10 +467,15 @@ def checkMotion(
             "qi2": np.nan,
             "fber": np.nan,
             "snr": np.nan,
+            "snr_gm": np.nan,
+            "snr_wm": np.nan,
+            "snr_csf": np.nan,
+            "snr_head": np.nan,
             "bg_mean": np.nan,
             "bg_median": np.nan,
             "bg_std": np.nan,
             "bg_mad": np.nan,
+            "bg_kurtosis": np.nan,
             "bg_p05": np.nan,
             "bg_p95": np.nan,
             "bg_n": 0,
@@ -451,21 +546,47 @@ def checkMotion(
 
     fg = img[headmask > 0]
     if fg.size == 0:
-        snr_value = np.nan
+        snr_head_value = np.nan
     else:
-        snr_value = snr(float(np.median(fg)), float(np.std(fg)), int(fg.size))
+        snr_head_value = snr(float(np.median(fg)), float(np.std(fg)), int(fg.size))
+
+    aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
+    aparc_path = os.path.join(subjects_dir, subject, "mri", aparc_image)
+    if os.path.exists(aseg_path) and os.path.exists(aparc_path):
+        aseg_data = nib.load(aseg_path).get_fdata()
+        aparc_data = nib.load(aparc_path).get_fdata()
+        tissue_snr = snr_tissue(
+            img,
+            aseg_data,
+            aparc_data,
+            nb_erode_wm=nb_erode_wm,
+            nb_erode_csf=nb_erode_csf,
+        )
+    else:
+        warnings.warn(
+            "WARNING: could not open " + aseg_path + " and/or " + aparc_path
+            + ", returning NaNs for tissue-based SNR.",
+            stacklevel=2,
+        )
+        tissue_snr = {"snr": np.nan, "snr_gm": np.nan, "snr_wm": np.nan, "snr_csf": np.nan}
 
     metrics = {
         "efc": efc(img, framemask=rotmask),
         "qi2": qi2(img, airmask),
         "fber": fber(img, headmask, rotmask=rotmask),
-        "snr": snr_value,
+        "snr_head": snr_head_value,
     }
+    metrics.update(tissue_snr)
     metrics.update(bg(img, headmask, rotmask=rotmask))
 
     logging.info("EFC: " + f"{metrics['efc']:.4}" if np.isfinite(metrics["efc"]) else "EFC: nan")
     logging.info("QI2: " + f"{metrics['qi2']:.4}" if np.isfinite(metrics["qi2"]) else "QI2: nan")
     logging.info("FBER: " + f"{metrics['fber']:.4}" if np.isfinite(metrics["fber"]) else "FBER: nan")
     logging.info("SNR: " + f"{metrics['snr']:.4}" if np.isfinite(metrics["snr"]) else "SNR: nan")
+    logging.info(
+        "SNR_HEAD: " + f"{metrics['snr_head']:.4}"
+        if np.isfinite(metrics["snr_head"])
+        else "SNR_HEAD: nan"
+    )
 
     return metrics

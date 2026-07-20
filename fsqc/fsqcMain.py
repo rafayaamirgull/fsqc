@@ -91,6 +91,22 @@ def get_help(print_help=True, return_help=False):
     - rot_tal_x     ...  rotation component of the Talairach transform around the x axis
     - rot_tal_y     ...  rotation component of the Talairach transform around the y axis
     - rot_tal_z     ...  rotation component of the Talairach transform around the z axis
+    - motion_efc    ...  MRIQC-style entropy focus criterion in norm.mgz
+    - motion_qi2    ...  MRIQC-style Mortamet quality index 2 in norm.mgz
+    - motion_fber   ...  MRIQC-style foreground-background energy ratio in norm.mgz
+    - motion_snr        ...  MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks in norm.mgz
+    - motion_snr_gm     ...  MRIQC-style signal-to-noise ratio in the gray matter mask in norm.mgz
+    - motion_snr_wm     ...  MRIQC-style signal-to-noise ratio in the white matter mask in norm.mgz
+    - motion_snr_csf    ...  MRIQC-style signal-to-noise ratio in the CSF mask in norm.mgz
+    - motion_snr_head   ...  MRIQC-style signal-to-noise ratio over the whole head mask in norm.mgz
+    - motion_bg_mean     ...  mean background intensity in norm.mgz
+    - motion_bg_median   ...  median background intensity in norm.mgz
+    - motion_bg_std      ...  standard deviation of background intensity in norm.mgz
+    - motion_bg_mad      ...  median absolute deviation of background intensity in norm.mgz
+    - motion_bg_kurtosis ...  kurtosis of background intensity in norm.mgz
+    - motion_bg_p05      ...  5th percentile of background intensity in norm.mgz
+    - motion_bg_p95      ...  95th percentile of background intensity in norm.mgz
+    - motion_bg_n        ...  number of background voxels in norm.mgz
 
     The program will use an existing output directory (or try to create it) and
     write a csv table into that location. The csv table will contain the above
@@ -1807,19 +1823,25 @@ def _do_fsqc(argsDict):
                 # check motion
                 try:
                     motion_metrics = checkMotion(
-                        subjects_dir=argsDict["subjects_dir"], 
+                        subjects_dir=argsDict["subjects_dir"],
                         subject=subject,
                         ref_image="norm.mgz",
-                        qi2_airmask_image=None,                        
+                        qi2_airmask_image=None,
+                        aparc_image=aparc_image,
                     )
                     motion_efc = motion_metrics["efc"]
                     motion_qi2 = motion_metrics["qi2"]
                     motion_fber = motion_metrics["fber"]
                     motion_snr = motion_metrics["snr"]
+                    motion_snr_gm = motion_metrics["snr_gm"]
+                    motion_snr_wm = motion_metrics["snr_wm"]
+                    motion_snr_csf = motion_metrics["snr_csf"]
+                    motion_snr_head = motion_metrics["snr_head"]
                     motion_bg_mean = motion_metrics["bg_mean"]
                     motion_bg_median = motion_metrics["bg_median"]
                     motion_bg_std = motion_metrics["bg_std"]
                     motion_bg_mad = motion_metrics["bg_mad"]
+                    motion_bg_kurtosis = motion_metrics["bg_kurtosis"]
                     motion_bg_p05 = motion_metrics["bg_p05"]
                     motion_bg_p95 = motion_metrics["bg_p95"]
                     motion_bg_n = motion_metrics["bg_n"]
@@ -1830,10 +1852,15 @@ def _do_fsqc(argsDict):
                     motion_qi2 = np.nan
                     motion_fber = np.nan
                     motion_snr = np.nan
+                    motion_snr_gm = np.nan
+                    motion_snr_wm = np.nan
+                    motion_snr_csf = np.nan
+                    motion_snr_head = np.nan
                     motion_bg_mean = np.nan
                     motion_bg_median = np.nan
                     motion_bg_std = np.nan
                     motion_bg_mad = np.nan
+                    motion_bg_kurtosis = np.nan
                     motion_bg_p05 = np.nan
                     motion_bg_p95 = np.nan
                     motion_bg_n = np.nan
@@ -1864,10 +1891,15 @@ def _do_fsqc(argsDict):
                         "motion_qi2" : motion_qi2,
                         "motion_fber" : motion_fber,
                         "motion_snr" : motion_snr,
+                        "motion_snr_gm" : motion_snr_gm,
+                        "motion_snr_wm" : motion_snr_wm,
+                        "motion_snr_csf" : motion_snr_csf,
+                        "motion_snr_head" : motion_snr_head,
                         "motion_bg_mean" : motion_bg_mean,
                         "motion_bg_median" : motion_bg_median,
                         "motion_bg_std" : motion_bg_std,
                         "motion_bg_mad" : motion_bg_mad,
+                        "motion_bg_kurtosis" : motion_bg_kurtosis,
                         "motion_bg_p05" : motion_bg_p05,
                         "motion_bg_p95" : motion_bg_p95,
                         "motion_bg_n" : motion_bg_n,                        
@@ -2903,10 +2935,15 @@ def _do_fsqc(argsDict):
                 "motion_qi2",
                 "motion_fber",
                 "motion_snr",
+                "motion_snr_gm",
+                "motion_snr_wm",
+                "motion_snr_csf",
+                "motion_snr_head",
                 "motion_bg_mean",
                 "motion_bg_median",
                 "motion_bg_std",
                 "motion_bg_mad",
+                "motion_bg_kurtosis",
                 "motion_bg_p05",
                 "motion_bg_p95",
                 "motion_bg_n",
