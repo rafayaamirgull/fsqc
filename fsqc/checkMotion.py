@@ -232,7 +232,7 @@ def efc(img, framemask=None):
     )
 
 
-def fber(img, headmask, rotmask=None):
+def fber(img, headmask, airmask):
     """
     Compute MRIQC's foreground-background energy ratio (FBER).
 
@@ -246,7 +246,6 @@ def fber(img, headmask, rotmask=None):
 
     fg_mu = np.median(np.abs(fg) ** 2)
 
-    airmask = _airmask_from_headmask(headmask, rotmask=rotmask)
     bg = img[airmask == 1]
     if bg.size == 0:
         return np.nan
@@ -329,14 +328,13 @@ def snr_tissue(img, aseg_data, aparc_data, nb_erode_wm=3, nb_erode_csf=1):
     return result
 
 
-def bg(img, headmask, rotmask=None):
+def bg(img, airmask):
     """
     Compute background summary statistics akin to MRIQC's summary_bg_* measures.
     """
     import numpy as np
     from scipy.stats import kurtosis
 
-    airmask = _airmask_from_headmask(headmask, rotmask=rotmask)
     data = np.nan_to_num(img[airmask > 0], nan=0.0, posinf=0.0, neginf=0.0)
 
     if data.size == 0:
@@ -409,7 +407,9 @@ def checkMotion(
     ref_image="orig.mgz",
     output_dir=None,
     write_masks=True, # False # TODO: revert for production
-    qi2_airmask_image=None,
+    rotmask_file=None,
+    headmask_file=None,
+    airmask_file=None,
     aseg_image="aseg.mgz",
     aparc_image="aparc+aseg.mgz",
     nb_erode_wm=3,
@@ -431,12 +431,22 @@ def checkMotion(
         to (e.g. the caller's ``metrics_outdir``). Required for
         ``write_masks`` to have any effect.
     write_masks : bool, optional
-        If true and ``output_dir`` is given, save the computed ``rotmask``,
-        ``headmask``, and ``airmask`` as NIfTI images under ``output_dir``
-        (default: ``False``).
-    qi2_airmask_image : str or None, optional
-        Optional dedicated air mask under ``mri/`` for QI2. If omitted,
-        the complement of the computed ``headmask`` (minus computed ``rotmask``)
+        If true and ``output_dir`` is given, save the ``rotmask``,
+        ``headmask``, and ``airmask`` actually used (computed or externally
+        supplied) as NIfTI images under ``output_dir`` (default: ``False``).
+    rotmask_file : str or None, optional
+        Full path to an externally supplied rotation mask (NIfTI), in the
+        same grid as ``ref_image``. If omitted, the rotmask is computed
+        internally from a pre-conform source (``rawavg.mgz`` or
+        ``orig/001.mgz``).
+    headmask_file : str or None, optional
+        Full path to an externally supplied head mask (NIfTI), in the same
+        grid as ``ref_image``. If omitted, the headmask is computed
+        internally via Otsu thresholding.
+    airmask_file : str or None, optional
+        Full path to an externally supplied air mask (NIfTI), in the same
+        grid as ``ref_image``, used for QI2, FBER, and BG. If omitted, the
+        complement of the (computed or supplied) ``headmask``/``rotmask``
         is used.
     aseg_image : str, optional
         FreeSurfer/FastSurfer ``aseg`` segmentation under ``mri/``, used for the
@@ -466,20 +476,7 @@ def checkMotion(
     import nibabel as nib
     import numpy as np
 
-    logging.captureWarnings(True)
-    logging.info("Computing MRIQC-style motion/noise metrics ...")
-
-    # make sure the debug-mask output folder exists before anything tries to write to it
-    if write_masks and output_dir is not None:
-        os.makedirs(output_dir, exist_ok=True)
-
-    # locate and load the reference volume; bail out with NaNs if it's missing
-    ref_path = os.path.join(subjects_dir, subject, "mri", ref_image)
-    if not os.path.exists(ref_path):
-        warnings.warn(
-            "WARNING: could not open " + ref_path + ", returning NaNs.",
-            stacklevel=2,
-        )
+    def _nan_metrics_dict():
         return {
             "efc": np.nan,
             "qi2": np.nan,
@@ -499,46 +496,92 @@ def checkMotion(
             "bg_n": 0,
         }
 
+    logging.captureWarnings(True)
+    logging.info("Computing MRIQC-style motion/noise metrics ...")
+
+    # make sure the debug-mask output folder exists before anything tries to write to it
+    if write_masks and output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+
+    # locate and load the reference volume; bail out with NaNs if it's missing
+    ref_path = os.path.join(subjects_dir, subject, "mri", ref_image)
+    if not os.path.exists(ref_path):
+        warnings.warn(
+            "WARNING: could not open " + ref_path + ", returning NaNs.",
+            stacklevel=2,
+        )
+        return _nan_metrics_dict()
+
     ref_img = nib.load(ref_path)
     img = ref_img.get_fdata()
 
-    # Try to build a rotmask by mapping a pre-conform source to ref_image: the
-    # rotmask flags voxels in ref_image's grid that fall outside the original
-    # (pre-conform) field-of-view, which would otherwise bias the other metrics.
-    rotmask = None
-    preconform_candidates = [
-        os.path.join(subjects_dir, subject, "mri", "rawavg.mgz"),
-        os.path.join(subjects_dir, subject, "mri", "orig", "001.mgz"),
-    ]
-    preconform_source = next((p for p in preconform_candidates if os.path.exists(p)), None)
+    def _load_external_mask(mask_file, mask_label):
+        """
+        Load and validate an externally supplied mask file against ``img``'s shape.
 
-    rotmask_out_path = None
-    if write_masks and output_dir is not None:
-        rotmask_out_path = os.path.join(output_dir, "rotmask.nii.gz")
-
-    if preconform_source is not None:
-        try:
-            rotmask = computeConformRotmask(
-                source_img=preconform_source,
-                target_img=ref_path,
-                out_file=rotmask_out_path,
+        Returns the binarized mask array on success. Raises ``FileNotFoundError``
+        or ``ValueError`` on failure (missing file, load error, shape mismatch);
+        the caller is expected to warn and fail closed (return NaNs) on exception,
+        since an explicitly supplied mask should never be silently ignored.
+        """
+        if not os.path.exists(mask_file):
+            raise FileNotFoundError("could not find external " + mask_label + " " + mask_file)
+        candidate = nib.load(mask_file).get_fdata()
+        if candidate.shape[:3] != img.shape[:3]:
+            raise ValueError(
+                "external " + mask_label + " " + mask_file + " has shape "
+                + str(candidate.shape[:3]) + ", expected " + str(img.shape[:3])
             )
-            logging.info("Computed rotmask from " + preconform_source)
+        return (candidate > 0).astype(np.uint8)
+
+    # Resolve the rotmask: either an externally supplied mask, or (the common
+    # case) computed by mapping a pre-conform source to ref_image, flagging
+    # voxels in ref_image's grid that fall outside the original (pre-conform)
+    # field-of-view, which would otherwise bias the other metrics.
+    rotmask = None
+    if rotmask_file is not None:
+        try:
+            rotmask = _load_external_mask(rotmask_file, "rotmask")
+            logging.info("Using external rotmask " + rotmask_file)
         except Exception as exc:
             warnings.warn(
-                "WARNING: could not compute rotmask from "
-                + preconform_source
-                + " ("
-                + str(exc)
-                + "), proceeding without rotmask.",
+                "WARNING: could not use external rotmask " + rotmask_file
+                + " (" + str(exc) + "), returning NaNs.",
                 stacklevel=2,
             )
+            return _nan_metrics_dict()
     else:
-        warnings.warn(
-            "WARNING: could not find pre-conform source (expected rawavg.mgz "
-            "or orig/001.mgz), proceeding without rotmask.",
-            stacklevel=2,
-        )
+        preconform_candidates = [
+            os.path.join(subjects_dir, subject, "mri", "rawavg.mgz"),
+            os.path.join(subjects_dir, subject, "mri", "orig", "001.mgz"),
+        ]
+        preconform_source = next((p for p in preconform_candidates if os.path.exists(p)), None)
+
+        if preconform_source is not None:
+            try:
+                rotmask = computeConformRotmask(
+                    source_img=preconform_source,
+                    target_img=ref_path,
+                )
+                logging.info("Computed rotmask from " + preconform_source)
+            except Exception as exc:
+                warnings.warn(
+                    "WARNING: could not compute rotmask from "
+                    + preconform_source
+                    + " ("
+                    + str(exc)
+                    + "), proceeding without rotmask.",
+                    stacklevel=2,
+                )
+        else:
+            warnings.warn(
+                "WARNING: could not find pre-conform source (expected rawavg.mgz "
+                "or orig/001.mgz), proceeding without rotmask.",
+                stacklevel=2,
+            )
+
+    if write_masks and output_dir is not None and rotmask is not None:
+        _save_mask_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
 
     # Load the aseg segmentation early (if available): it's used both to
     # reinforce the headmask below (any already-segmented tissue voxel is
@@ -554,25 +597,39 @@ def checkMotion(
             stacklevel=2,
         )
 
-    # Compute the head foreground mask via Otsu thresholding on ref_image
-    # intensities, excluding any rotmask (outside-FOV) voxels from the estimate.
-    headmask = computeHeadmaskOtsu(img, rotmask=rotmask, aseg_data=aseg_data)
+    # Resolve the headmask: either an externally supplied mask, or (the common
+    # case) computed via Otsu thresholding on ref_image intensities, excluding
+    # any rotmask (outside-FOV) voxels from the estimate.
+    if headmask_file is not None:
+        try:
+            headmask = _load_external_mask(headmask_file, "headmask")
+            logging.info("Using external headmask " + headmask_file)
+        except Exception as exc:
+            warnings.warn(
+                "WARNING: could not use external headmask " + headmask_file
+                + " (" + str(exc) + "), returning NaNs.",
+                stacklevel=2,
+            )
+            return _nan_metrics_dict()
+    else:
+        headmask = computeHeadmaskOtsu(img, rotmask=rotmask, aseg_data=aseg_data)
 
     if write_masks and output_dir is not None:
         _save_mask_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
 
-    # Resolve the airmask used for QI2: either an externally supplied mask, or
-    # (the common case) the complement of headmask/rotmask computed above.
-    if qi2_airmask_image is not None:
-        airmask_path = os.path.join(subjects_dir, subject, "mri", qi2_airmask_image)
-        if os.path.exists(airmask_path):
-            airmask = nib.load(airmask_path).get_fdata()
-        else:
+    # Resolve the airmask used for QI2, FBER, and BG: either an externally
+    # supplied mask, or (the common case) the complement of headmask/rotmask.
+    if airmask_file is not None:
+        try:
+            airmask = _load_external_mask(airmask_file, "airmask")
+            logging.info("Using external airmask " + airmask_file)
+        except Exception as exc:
             warnings.warn(
-                "WARNING: could not open " + airmask_path + ", using complement of headmask.",
+                "WARNING: could not use external airmask " + airmask_file
+                + " (" + str(exc) + "), returning NaNs.",
                 stacklevel=2,
             )
-            airmask = _airmask_from_headmask(headmask, rotmask=rotmask)
+            return _nan_metrics_dict()
     else:
         airmask = _airmask_from_headmask(headmask, rotmask=rotmask)
 
@@ -610,11 +667,11 @@ def checkMotion(
     metrics = {
         "efc": efc(img, framemask=rotmask),
         "qi2": qi2(img, airmask),
-        "fber": fber(img, headmask, rotmask=rotmask),
+        "fber": fber(img, headmask, airmask),
         "snr_head": snr_head_value,
     }
     metrics.update(tissue_snr)
-    metrics.update(bg(img, headmask, rotmask=rotmask))
+    metrics.update(bg(img, airmask))
 
     # Summary logging for quick visual sanity-checking in pipeline logs.
     logging.info("EFC: " + f"{metrics['efc']:.4}" if np.isfinite(metrics["efc"]) else "EFC: nan")

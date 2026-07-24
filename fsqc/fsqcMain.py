@@ -722,6 +722,44 @@ def _parse_arguments():
         metavar="<neurological|radiological>",
         required=False,
     )  # this is currently a hidden "expert" option
+    expert.add_argument(
+        "--motion-rotmask",
+        dest="motion_rotmask",
+        help="full path to an externally computed rotation mask (NIfTI) to use "
+        "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
+        "full path; it is not assumed to be located within the subject's mri "
+        "subfolder. If omitted, a rotmask is computed internally. If given but "
+        "the file cannot be found, loaded, or does not match orig.mgz's shape, "
+        "the motion metrics are returned as NaN for that subject.",
+        default=None,
+        metavar="<filename>",
+        required=False,
+    )
+    expert.add_argument(
+        "--motion-headmask",
+        dest="motion_headmask",
+        help="full path to an externally computed head mask (NIfTI) to use "
+        "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
+        "full path; it is not assumed to be located within the subject's mri "
+        "subfolder. If omitted, a headmask is computed internally via Otsu "
+        "thresholding. Fails the same way as --motion-rotmask if it cannot be "
+        "used.",
+        default=None,
+        metavar="<filename>",
+        required=False,
+    )
+    expert.add_argument(
+        "--motion-airmask",
+        dest="motion_airmask",
+        help="full path to an externally computed air mask (NIfTI) to use "
+        "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
+        "full path; it is not assumed to be located within the subject's mri "
+        "subfolder. If omitted, the complement of the headmask/rotmask is used. "
+        "Fails the same way as --motion-rotmask if it cannot be used.",
+        default=None,
+        metavar="<filename>",
+        required=False,
+    )
 
     help = parser.add_argument_group("getting help")
     help.add_argument(
@@ -784,6 +822,9 @@ def _parse_arguments():
     argsDict["group_only"] = args.group_only
     argsDict["exit_on_error"] = args.exit_on_error
     argsDict["skip_existing"] = args.skip_existing
+    argsDict["motion_rotmask"] = args.motion_rotmask
+    argsDict["motion_headmask"] = args.motion_headmask
+    argsDict["motion_airmask"] = args.motion_airmask
 
     #
     return argsDict
@@ -1202,6 +1243,21 @@ def _check_arguments(argsDict):
                 "ERROR: Could not find table with normative values ",
                 argsDict["outlier_table"],
             )
+
+    # check if externally supplied motion masks exist, if they were given
+    for mask_key, mask_label in (
+        ("motion_rotmask", "rotation mask"),
+        ("motion_headmask", "head mask"),
+        ("motion_airmask", "air mask"),
+    ):
+        if argsDict[mask_key] is not None:
+            if os.path.isfile(argsDict[mask_key]):
+                logging.info("Found external " + mask_label + " " + argsDict[mask_key])
+            else:
+                raise FileNotFoundError(
+                    "ERROR: Could not find external " + mask_label + " ",
+                    argsDict[mask_key],
+                )
 
     # check for required files
     subjects_to_remove = list()
@@ -1827,7 +1883,9 @@ def _do_fsqc(argsDict):
                         subject=subject,
                         ref_image="orig.mgz",
                         output_dir=metrics_outdir,
-                        qi2_airmask_image=None,
+                        rotmask_file=argsDict["motion_rotmask"],
+                        headmask_file=argsDict["motion_headmask"],
+                        airmask_file=argsDict["motion_airmask"],
                         aparc_image=aparc_image,
                     )
                     motion_efc = motion_metrics["efc"]
@@ -3671,6 +3729,9 @@ def run_fsqc(
     group_only=False,
     exit_on_error=False,
     skip_existing=False,
+    motion_rotmask=None,
+    motion_headmask=None,
+    motion_airmask=None,
     logfile=None,
 ):
     """
@@ -3762,6 +3823,24 @@ def run_fsqc(
     skip_existing : bool, default: False
         Skip processing for a given case if output already exists, even with
         possibly different parameters or settings.
+    motion_rotmask : str, default: None
+        Full path to an externally computed rotation mask (NIfTI) to use for
+        the motion/noise metrics, in the same grid as orig.mgz. Not assumed to
+        live under the subject's mri subfolder. If omitted, a rotmask is
+        computed internally; if given but unusable, motion metrics are
+        returned as NaN for that subject.
+    motion_headmask : str, default: None
+        Full path to an externally computed head mask (NIfTI) to use for the
+        motion/noise metrics, in the same grid as orig.mgz. Not assumed to
+        live under the subject's mri subfolder. If omitted, a headmask is
+        computed internally via Otsu thresholding; fails the same way as
+        motion_rotmask if given but unusable.
+    motion_airmask : str, default: None
+        Full path to an externally computed air mask (NIfTI) to use for the
+        motion/noise metrics, in the same grid as orig.mgz. Not assumed to
+        live under the subject's mri subfolder. If omitted, the complement of
+        the headmask/rotmask is used; fails the same way as motion_rotmask if
+        given but unusable.
     logfile : str, default: None
         Specify a custom location for the logfile. Default location is the
         output directory.
@@ -3817,6 +3896,9 @@ def run_fsqc(
         argsDict["group_only"] = group_only
         argsDict["exit_on_error"] = exit_on_error
         argsDict["skip_existing"] = skip_existing
+        argsDict["motion_rotmask"] = motion_rotmask
+        argsDict["motion_headmask"] = motion_headmask
+        argsDict["motion_airmask"] = motion_airmask
         argsDict["logfile"] = logfile
 
     elif (argsDict is not None) and (
