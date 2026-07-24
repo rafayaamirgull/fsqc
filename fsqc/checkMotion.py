@@ -46,7 +46,14 @@ def _tissue_mask_from_labels(seg_data, labels, nb_erode=0):
     return mask
 
 
-def computeConformRotmask(source_img, target_img, threshold=0.5):
+def _save_mask_nii(mask, affine, out_path):
+    """Save a binary mask array as a NIfTI (.nii/.nii.gz) image."""
+    import nibabel as nib
+
+    nib.save(nib.nifti1.Nifti1Image(mask.astype("uint8"), affine), out_path)
+
+
+def computeConformRotmask(source_img, target_img, threshold=0.5, out_file=None):
     """
     Compute a FreeSurfer-like conform rotmask from source and target images.
 
@@ -56,21 +63,31 @@ def computeConformRotmask(source_img, target_img, threshold=0.5):
 
     Parameters
     ----------
-    source_img : nibabel.spatialimages.SpatialImage
-        Pre-conform (source) image.
-    target_img : nibabel.spatialimages.SpatialImage
-        Conformed/resampled (target) image.
+    source_img : nibabel.spatialimages.SpatialImage or str
+        Pre-conform (source) image, or a path to load one from.
+    target_img : nibabel.spatialimages.SpatialImage or str
+        Conformed/resampled (target) image, or a path to load one from.
     threshold : float, optional
         Threshold for in-bounds interpolation values. Values below this
         threshold are treated as outside-FOV.
+    out_file : str or None, optional
+        If provided, save the resulting rotmask as a NIfTI image to this path.
 
     Returns
     -------
     numpy.ndarray
         Binary rotmask in target space (1 = resampling padding / outside-FOV).
     """
+    import os
+
+    import nibabel as nib
     import numpy as np
     from scipy.ndimage import affine_transform
+
+    if isinstance(source_img, (str, os.PathLike)):
+        source_img = nib.load(source_img)
+    if isinstance(target_img, (str, os.PathLike)):
+        target_img = nib.load(target_img)
 
     src_shape = source_img.shape[:3]
     tgt_shape = target_img.shape[:3]
@@ -95,51 +112,15 @@ def computeConformRotmask(source_img, target_img, threshold=0.5):
         prefilter=False,
     )
 
-    return (sampled < float(threshold)).astype(np.uint8)
-
-
-def computeConformRotmaskFromFiles(source_file, target_file, out_file=None, threshold=0.5):
-    """
-    Compute a conform rotmask from image files, optionally saving to disk.
-
-    Parameters
-    ----------
-    source_file : str
-        Path to the pre-conform source image.
-    target_file : str
-        Path to the conformed/resampled target image.
-    out_file : str or None, optional
-        If provided, save rotmask image to this path.
-    threshold : float, optional
-        Threshold used by :func:`computeConformRotmask`.
-
-    Returns
-    -------
-    numpy.ndarray
-        Binary rotmask in target space (1 = resampling padding / outside-FOV).
-    """
-    import os
-
-    import nibabel as nib
-    import numpy as np
-
-    src_img = nib.load(source_file)
-    tgt_img = nib.load(target_file)
-
-    rotmask = computeConformRotmask(source_img=src_img, target_img=tgt_img, threshold=threshold)
+    rotmask = (sampled < float(threshold)).astype(np.uint8)
 
     if out_file is not None:
-        _, ext = os.path.splitext(out_file)
-        if ext.lower() in [".mgz", ".mgh"]:
-            rotmask_img = nib.MGHImage(rotmask.astype(np.float32), tgt_img.affine)
-        else:
-            rotmask_img = nib.nifti1.Nifti1Image(rotmask.astype("uint8"), tgt_img.affine)
-        nib.save(rotmask_img, out_file)
+        _save_mask_nii(rotmask, target_img.affine, out_file)
 
     return rotmask
 
 
-def computeHeadmaskOtsu(img, rotmask=None):
+def computeHeadmaskOtsu(img, rotmask=None, aseg_data=None):
     """
     Compute a head mask from image intensities using Otsu thresholding.
 
@@ -150,13 +131,24 @@ def computeHeadmaskOtsu(img, rotmask=None):
     rotmask : numpy.ndarray or None, optional
         Optional rotmask where non-zero voxels are excluded from threshold
         estimation and output mask.
+    aseg_data : numpy.ndarray or None, optional
+        Optional FreeSurfer/FastSurfer ``aseg`` segmentation, same shape as
+        ``img``. Any voxel with a non-background label is unioned into the
+        head mask, since it's unambiguously part of the head regardless of
+        its intensity.
 
     Returns
     -------
     numpy.ndarray
-        Binary head mask (uint8, 1 = foreground/head).
+        Binary head mask (uint8, 1 = foreground/head). Thin channels
+        connecting interior cavities to the background are closed first,
+        then interior holes (e.g. ventricles/CSF, or other dark-but-
+        inside-the-head voxels that fall below the threshold) are filled
+        in, so they aren't misclassified as background via the airmask
+        complement.
     """
     import numpy as np
+    from scipy.ndimage import binary_closing, binary_fill_holes
 
     finite = np.isfinite(img)
     if rotmask is not None:
@@ -191,6 +183,21 @@ def computeHeadmaskOtsu(img, rotmask=None):
 
     headmask = np.zeros_like(img, dtype=np.uint8)
     headmask[img > threshold] = 1
+
+    if aseg_data is not None:
+        # Any voxel already segmented as brain tissue is definitely part of
+        # the head, regardless of its (possibly dark) intensity.
+        headmask = np.logical_or(headmask, aseg_data > 0).astype(np.uint8)
+
+    # Seal thin channels (e.g. sinuses, gaps in the thresholded shell) that
+    # would otherwise connect large interior cavities to the background, so
+    # fill_holes below can recognize them as fully enclosed.
+    headmask = binary_closing(headmask, iterations=5)
+
+    # Fill interior holes (e.g. ventricles/CSF) so dark-but-inside-the-head
+    # voxels aren't misclassified as background via the airmask complement.
+    headmask = binary_fill_holes(headmask).astype(np.uint8)
+
     if rotmask is not None:
         headmask[rotmask > 0] = 0
 
@@ -399,8 +406,9 @@ def qi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_elements=32
 def checkMotion(
     subjects_dir,
     subject,
-    ref_image="norm.mgz",
-    headmask_out_image=None,
+    ref_image="orig.mgz",
+    output_dir=None,
+    write_masks=True, # False # TODO: revert for production
     qi2_airmask_image=None,
     aseg_image="aseg.mgz",
     aparc_image="aparc+aseg.mgz",
@@ -417,10 +425,15 @@ def checkMotion(
     subject : str
         The name of the subject.
     ref_image : str, optional
-        Reference MRI volume under ``mri/`` (default: ``norm.mgz``).
-    headmask_out_image : str or None, optional
-        If provided, save the computed Otsu headmask under ``mri/``. Absolute
-        paths are also accepted.
+        Reference MRI volume under ``mri/`` (default: ``orig.mgz``).
+    output_dir : str or None, optional
+        Subject-specific metrics output folder to write debug mask images
+        to (e.g. the caller's ``metrics_outdir``). Required for
+        ``write_masks`` to have any effect.
+    write_masks : bool, optional
+        If true and ``output_dir`` is given, save the computed ``rotmask``,
+        ``headmask``, and ``airmask`` as NIfTI images under ``output_dir``
+        (default: ``False``).
     qi2_airmask_image : str or None, optional
         Optional dedicated air mask under ``mri/`` for QI2. If omitted,
         the complement of the computed ``headmask`` (minus computed ``rotmask``)
@@ -456,6 +469,11 @@ def checkMotion(
     logging.captureWarnings(True)
     logging.info("Computing MRIQC-style motion/noise metrics ...")
 
+    # make sure the debug-mask output folder exists before anything tries to write to it
+    if write_masks and output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+
+    # locate and load the reference volume; bail out with NaNs if it's missing
     ref_path = os.path.join(subjects_dir, subject, "mri", ref_image)
     if not os.path.exists(ref_path):
         warnings.warn(
@@ -484,7 +502,9 @@ def checkMotion(
     ref_img = nib.load(ref_path)
     img = ref_img.get_fdata()
 
-    # Try to build a rotmask by mapping a pre-conform source to ref_image.
+    # Try to build a rotmask by mapping a pre-conform source to ref_image: the
+    # rotmask flags voxels in ref_image's grid that fall outside the original
+    # (pre-conform) field-of-view, which would otherwise bias the other metrics.
     rotmask = None
     preconform_candidates = [
         os.path.join(subjects_dir, subject, "mri", "rawavg.mgz"),
@@ -492,12 +512,16 @@ def checkMotion(
     ]
     preconform_source = next((p for p in preconform_candidates if os.path.exists(p)), None)
 
+    rotmask_out_path = None
+    if write_masks and output_dir is not None:
+        rotmask_out_path = os.path.join(output_dir, "rotmask.nii.gz")
+
     if preconform_source is not None:
         try:
-            rotmask = computeConformRotmaskFromFiles(
-                source_file=preconform_source,
-                target_file=ref_path,
-                out_file=None,
+            rotmask = computeConformRotmask(
+                source_img=preconform_source,
+                target_img=ref_path,
+                out_file=rotmask_out_path,
             )
             logging.info("Computed rotmask from " + preconform_source)
         except Exception as exc:
@@ -516,21 +540,29 @@ def checkMotion(
             stacklevel=2,
         )
 
-    headmask = computeHeadmaskOtsu(img, rotmask=rotmask)
+    # Load the aseg segmentation early (if available): it's used both to
+    # reinforce the headmask below (any already-segmented tissue voxel is
+    # unambiguously part of the head) and later for the GM/CSF SNR masks.
+    aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
+    aseg_data = None
+    if os.path.exists(aseg_path):
+        aseg_data = nib.load(aseg_path).get_fdata()
+    else:
+        warnings.warn(
+            "WARNING: could not open " + aseg_path
+            + ", proceeding without aseg-based headmask reinforcement.",
+            stacklevel=2,
+        )
 
-    if headmask_out_image is not None:
-        if os.path.isabs(headmask_out_image):
-            headmask_out_path = headmask_out_image
-        else:
-            headmask_out_path = os.path.join(subjects_dir, subject, "mri", headmask_out_image)
+    # Compute the head foreground mask via Otsu thresholding on ref_image
+    # intensities, excluding any rotmask (outside-FOV) voxels from the estimate.
+    headmask = computeHeadmaskOtsu(img, rotmask=rotmask, aseg_data=aseg_data)
 
-        _, ext = os.path.splitext(headmask_out_path)
-        if ext.lower() in [".mgz", ".mgh"]:
-            headmask_img = nib.MGHImage(headmask.astype(np.float32), ref_img.affine)
-        else:
-            headmask_img = nib.nifti1.Nifti1Image(headmask.astype("uint8"), ref_img.affine)
-        nib.save(headmask_img, headmask_out_path)
+    if write_masks and output_dir is not None:
+        _save_mask_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
 
+    # Resolve the airmask used for QI2: either an externally supplied mask, or
+    # (the common case) the complement of headmask/rotmask computed above.
     if qi2_airmask_image is not None:
         airmask_path = os.path.join(subjects_dir, subject, "mri", qi2_airmask_image)
         if os.path.exists(airmask_path):
@@ -544,16 +576,19 @@ def checkMotion(
     else:
         airmask = _airmask_from_headmask(headmask, rotmask=rotmask)
 
+    if write_masks and output_dir is not None:
+        _save_mask_nii(airmask, ref_img.affine, os.path.join(output_dir, "airmask.nii.gz"))
+
+    # Whole-head SNR needs no segmentation: it summarizes intensities over headmask directly.
     fg = img[headmask > 0]
     if fg.size == 0:
         snr_head_value = np.nan
     else:
         snr_head_value = snr(float(np.median(fg)), float(np.std(fg)), int(fg.size))
 
-    aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
+    # Tissue-based SNR (GM/WM/CSF) additionally requires aseg/aparc segmentations.
     aparc_path = os.path.join(subjects_dir, subject, "mri", aparc_image)
-    if os.path.exists(aseg_path) and os.path.exists(aparc_path):
-        aseg_data = nib.load(aseg_path).get_fdata()
+    if aseg_data is not None and os.path.exists(aparc_path):
         aparc_data = nib.load(aparc_path).get_fdata()
         tissue_snr = snr_tissue(
             img,
@@ -570,6 +605,8 @@ def checkMotion(
         )
         tissue_snr = {"snr": np.nan, "snr_gm": np.nan, "snr_wm": np.nan, "snr_csf": np.nan}
 
+    # Assemble the final metrics dict: EFC/QI2/FBER/whole-head SNR first, then
+    # tissue-based SNR and background summary stats merged in.
     metrics = {
         "efc": efc(img, framemask=rotmask),
         "qi2": qi2(img, airmask),
@@ -579,6 +616,7 @@ def checkMotion(
     metrics.update(tissue_snr)
     metrics.update(bg(img, headmask, rotmask=rotmask))
 
+    # Summary logging for quick visual sanity-checking in pipeline logs.
     logging.info("EFC: " + f"{metrics['efc']:.4}" if np.isfinite(metrics["efc"]) else "EFC: nan")
     logging.info("QI2: " + f"{metrics['qi2']:.4}" if np.isfinite(metrics["qi2"]) else "QI2: nan")
     logging.info("FBER: " + f"{metrics['fber']:.4}" if np.isfinite(metrics["fber"]) else "FBER: nan")
