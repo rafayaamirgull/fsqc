@@ -1881,7 +1881,6 @@ def _do_fsqc(argsDict):
                     motion_metrics = checkMotion(
                         subjects_dir=argsDict["subjects_dir"],
                         subject=subject,
-                        ref_image="orig.mgz",
                         output_dir=metrics_outdir,
                         rotmask_file=argsDict["motion_rotmask"],
                         headmask_file=argsDict["motion_headmask"],

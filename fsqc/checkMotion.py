@@ -12,6 +12,7 @@ Implemented measures:
 - BG        : Background summary statistics
 """
 
+import os
 
 # -----------------------------------------------------------------------------
 
@@ -53,71 +54,147 @@ def _save_mask_nii(mask, affine, out_path):
     nib.save(nib.nifti1.Nifti1Image(mask.astype("uint8"), affine), out_path)
 
 
-def computeConformRotmask(source_img, target_img, threshold=0.5, out_file=None):
+def conformImage(in_img):
     """
-    Compute a FreeSurfer-like conform rotmask from source and target images.
+    Conform an anatomical image the way mriqc's anatomical workflow does.
 
-    This helper mimics the key conform behavior relevant to rotmask creation:
-    resample an all-ones source volume into the target grid and mark voxels that
-    fall outside the source field-of-view after resampling.
+    Mirrors mriqc's ``mriqc.interfaces.common.ConformImage`` as it is
+    actually invoked in mriqc's anatomical workflow
+    (``ConformImage(check_dtype=False)``): squeeze a redundant 4th
+    dimension, then reorient to RAS canonical orientation
+    (``nib.as_closest_canonical``). No dtype casting and no resampling to a
+    fixed voxel size/shape is performed (unlike FreeSurfer's own
+    ``mri_convert --conform``).
 
     Parameters
     ----------
-    source_img : nibabel.spatialimages.SpatialImage or str
-        Pre-conform (source) image, or a path to load one from.
-    target_img : nibabel.spatialimages.SpatialImage or str
-        Conformed/resampled (target) image, or a path to load one from.
-    threshold : float, optional
-        Threshold for in-bounds interpolation values. Values below this
-        threshold are treated as outside-FOV.
-    out_file : str or None, optional
-        If provided, save the resulting rotmask as a NIfTI image to this path.
+    in_img : nibabel.spatialimages.SpatialImage or str or os.PathLike
+        Input image, or a path to load one from.
+
+    Returns
+    -------
+    nibabel.spatialimages.SpatialImage
+        Conformed (squeezed + RAS-reoriented) image.
+    """
+    import nibabel as nib
+
+    if isinstance(in_img, (str, os.PathLike)):
+        in_img = nib.load(in_img)
+
+    return nib.as_closest_canonical(nib.squeeze_image(in_img))
+
+
+#: Fallback chain (relative to a subject's mri/ dir) for checkMotion's
+#: reference image, in preference order: the true pre-conform, native
+#: volume first, then progressively more processed substitutes.
+_REF_IMAGE_CANDIDATES = (
+    os.path.join("orig", "001.mgz"),
+    "rawavg.mgz",
+    "orig.mgz",
+)
+
+
+def _resolve_ref_image(subjects_dir, subject, ref_image=None):
+    """
+    Resolve the reference anatomical image path for checkMotion.
+
+    If ``ref_image`` is given explicitly, it is used as-is (joined under
+    ``mri/``), with no fallback. Otherwise, the preference chain
+    ``mri/orig/001.mgz`` -> ``mri/rawavg.mgz`` -> ``mri/orig.mgz`` is tried in
+    order, returning the first candidate that exists. A warning is issued
+    whenever a fallback (2nd or later) candidate is used, since each
+    represents a degraded substitute for the preferred pre-conform image.
+
+    Parameters
+    ----------
+    subjects_dir : str
+        The directory containing subject data.
+    subject : str
+        The name of the subject.
+    ref_image : str or None, optional
+        Explicit path (relative to ``mri/``) to use, bypassing the fallback
+        chain.
+
+    Returns
+    -------
+    str or None
+        Absolute path to the resolved reference image, or ``None`` if no
+        candidate exists.
+    """
+    import warnings
+
+    if ref_image is not None:
+        return os.path.join(subjects_dir, subject, "mri", ref_image)
+
+    for i, candidate in enumerate(_REF_IMAGE_CANDIDATES):
+        candidate_path = os.path.join(subjects_dir, subject, "mri", candidate)
+        if os.path.exists(candidate_path):
+            if i > 0:
+                warnings.warn(
+                    "WARNING: preferred reference image(s) ("
+                    + ", ".join(_REF_IMAGE_CANDIDATES[:i])
+                    + ") not found for " + subject + "; falling back to "
+                    + candidate + ".",
+                    stacklevel=3,
+                )
+            return candidate_path
+
+    return None
+
+
+def computeRotmaskMortamet(img, min_size=500):
+    """
+    Compute a rotation-artifact mask using the method of [Mortamet2009]_.
+
+    Ported from mriqc's ``mriqc.interfaces.anatomical.RotationMask``. Flags
+    hard-zero (``<= 0``) voxels left by an obliquely prescribed acquisition
+    being reconstructed into a rectangular voxel grid (not resampling
+    padding from a conform step). Thin/noisy zero specks are removed via
+    binary opening, then only the largest couple of connected components
+    (the real cut-corner region(s), which merge with the padded border) are
+    kept; the whole mask is discarded if it is too small to be a genuine
+    artifact.
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        3D image array.
+    min_size : int, optional
+        Minimum number of voxels for the detected mask to be kept; smaller
+        masks are treated as noise and zeroed out (default: 500, matching
+        mriqc's hardcoded threshold).
 
     Returns
     -------
     numpy.ndarray
-        Binary rotmask in target space (1 = resampling padding / outside-FOV).
+        Binary rotation mask (uint8, 1 = detected hard-zero artifact region).
     """
-    import os
-
-    import nibabel as nib
     import numpy as np
-    from scipy.ndimage import affine_transform
+    from scipy import ndimage as nd
 
-    if isinstance(source_img, (str, os.PathLike)):
-        source_img = nib.load(source_img)
-    if isinstance(target_img, (str, os.PathLike)):
-        target_img = nib.load(target_img)
+    mask = img <= 0
 
-    src_shape = source_img.shape[:3]
-    tgt_shape = target_img.shape[:3]
+    # Pad one voxel so real cut-corner regions (which touch the volume
+    # border) merge into a single component with the padding, separating
+    # them from small interior zero specks during the labeling step below.
+    mask = np.pad(mask, pad_width=(1,), mode="constant", constant_values=1)
 
-    if len(src_shape) != 3 or len(tgt_shape) != 3:
-        raise ValueError("source_img and target_img must be 3D volumes")
+    struct = nd.generate_binary_structure(3, 2)
+    mask = nd.binary_opening(mask, structure=struct).astype(np.uint8)
 
-    # Map target voxel indices to source voxel indices: src = inv(A_src) * A_tgt * tgt
-    src_to_world = source_img.affine
-    tgt_to_world = target_img.affine
-    tgt_to_src = np.linalg.inv(src_to_world) @ tgt_to_world
+    label_im, nb_labels = nd.label(mask)
+    if nb_labels > 2:
+        sizes = nd.sum(mask, label_im, list(range(nb_labels + 1)))
+        ordered = sorted(zip(sizes, list(range(nb_labels + 1))), reverse=True)
+        for _, label in ordered[2:]:
+            mask[label_im == label] = 0
 
-    ones = np.ones(src_shape, dtype=np.float32)
-    sampled = affine_transform(
-        ones,
-        matrix=tgt_to_src[:3, :3],
-        offset=tgt_to_src[:3, 3],
-        output_shape=tgt_shape,
-        order=0,
-        mode="constant",
-        cval=0.0,
-        prefilter=False,
-    )
+    mask = mask[1:-1, 1:-1, 1:-1]
 
-    rotmask = (sampled < float(threshold)).astype(np.uint8)
+    if mask.sum() < min_size:
+        mask = np.zeros_like(mask, dtype=np.uint8)
 
-    if out_file is not None:
-        _save_mask_nii(rotmask, target_img.affine, out_file)
-
-    return rotmask
+    return mask.astype(np.uint8)
 
 
 def computeHeadmaskOtsu(img, rotmask=None, aseg_data=None):
@@ -404,7 +481,7 @@ def qi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_elements=32
 def checkMotion(
     subjects_dir,
     subject,
-    ref_image="orig.mgz",
+    ref_image=None,
     output_dir=None,
     write_masks=True, # False # TODO: revert for production
     rotmask_file=None,
@@ -424,8 +501,15 @@ def checkMotion(
         The directory containing subject data.
     subject : str
         The name of the subject.
-    ref_image : str, optional
-        Reference MRI volume under ``mri/`` (default: ``orig.mgz``).
+    ref_image : str or None, optional
+        Reference MRI volume under ``mri/``. If omitted (default), it is
+        resolved via a fallback chain: ``orig/001.mgz`` (the true
+        pre-conform, native volume) first, then ``rawavg.mgz``, then
+        ``orig.mgz`` (FreeSurfer's own conformed volume), with a warning
+        whenever a fallback is used. Pass an explicit path (relative to
+        ``mri/``) to bypass the fallback chain. Whichever image is resolved
+        is conformed the way mriqc's anatomical workflow does (see
+        :func:`conformImage`) before any metric is computed.
     output_dir : str or None, optional
         Subject-specific metrics output folder to write debug mask images
         to (e.g. the caller's ``metrics_outdir``). Required for
@@ -436,21 +520,25 @@ def checkMotion(
         supplied) as NIfTI images under ``output_dir`` (default: ``False``).
     rotmask_file : str or None, optional
         Full path to an externally supplied rotation mask (NIfTI), in the
-        same grid as ``ref_image``. If omitted, the rotmask is computed
-        internally from a pre-conform source (``rawavg.mgz`` or
-        ``orig/001.mgz``).
+        same (conformed) grid as the resolved ``ref_image``. If omitted, the
+        rotmask is computed internally via :func:`computeRotmaskMortamet`
+        (mriqc's Mortamet2009 hard-zero detection) directly on the conformed
+        reference image; no pre-conform comparison is needed.
     headmask_file : str or None, optional
         Full path to an externally supplied head mask (NIfTI), in the same
-        grid as ``ref_image``. If omitted, the headmask is computed
-        internally via Otsu thresholding.
+        (conformed) grid as the resolved ``ref_image``. If omitted, the
+        headmask is computed internally via Otsu thresholding.
     airmask_file : str or None, optional
         Full path to an externally supplied air mask (NIfTI), in the same
-        grid as ``ref_image``, used for QI2, FBER, and BG. If omitted, the
-        complement of the (computed or supplied) ``headmask``/``rotmask``
-        is used.
+        (conformed) grid as the resolved ``ref_image``, used for QI2, FBER,
+        and BG. If omitted, the complement of the (computed or supplied)
+        ``headmask``/``rotmask`` is used.
     aseg_image : str, optional
-        FreeSurfer/FastSurfer ``aseg`` segmentation under ``mri/``, used for the
-        gray matter and CSF SNR masks (default: ``aseg.mgz``).
+        FreeSurfer/FastSurfer ``aseg`` segmentation under ``mri/``, used for
+        the gray matter and CSF SNR masks (default: ``aseg.mgz``). Tissue-
+        based SNR always loads this together with ``mri/orig.mgz`` (not the
+        resolved ``ref_image``), since ``aseg``/``aparc`` segmentations only
+        ever exist in FreeSurfer's own conformed grid.
     aparc_image : str, optional
         FreeSurfer/FastSurfer ``aparc+aseg``-style segmentation under ``mri/``,
         used for the white matter SNR mask (default: ``aparc+aseg.mgz``; pass
@@ -503,16 +591,21 @@ def checkMotion(
     if write_masks and output_dir is not None:
         os.makedirs(output_dir, exist_ok=True)
 
-    # locate and load the reference volume; bail out with NaNs if it's missing
-    ref_path = os.path.join(subjects_dir, subject, "mri", ref_image)
-    if not os.path.exists(ref_path):
+    # locate the reference volume (orig/001.mgz -> rawavg.mgz -> orig.mgz
+    # fallback chain, unless an explicit ref_image override was given); bail
+    # out with NaNs if none of the candidates exist
+    ref_path = _resolve_ref_image(subjects_dir, subject, ref_image)
+    if ref_path is None:
         warnings.warn(
-            "WARNING: could not open " + ref_path + ", returning NaNs.",
+            "WARNING: could not open reference image for " + subject
+            + " (tried " + ", ".join(_REF_IMAGE_CANDIDATES) + "), returning NaNs.",
             stacklevel=2,
         )
         return _nan_metrics_dict()
 
-    ref_img = nib.load(ref_path)
+    # conform the reference volume the way mriqc's anatomical workflow does
+    # (squeeze + RAS-reorient, no resampling) before computing any metric
+    ref_img = conformImage(ref_path)
     img = ref_img.get_fdata()
 
     def _load_external_mask(mask_file, mask_label):
@@ -535,10 +628,8 @@ def checkMotion(
         return (candidate > 0).astype(np.uint8)
 
     # Resolve the rotmask: either an externally supplied mask, or (the common
-    # case) computed by mapping a pre-conform source to ref_image, flagging
-    # voxels in ref_image's grid that fall outside the original (pre-conform)
-    # field-of-view, which would otherwise bias the other metrics.
-    rotmask = None
+    # case) computed via mriqc's Mortamet2009 hard-zero detection directly
+    # on the conformed reference image (no pre-conform comparison needed).
     if rotmask_file is not None:
         try:
             rotmask = _load_external_mask(rotmask_file, "rotmask")
@@ -551,51 +642,10 @@ def checkMotion(
             )
             return _nan_metrics_dict()
     else:
-        preconform_candidates = [
-            os.path.join(subjects_dir, subject, "mri", "rawavg.mgz"),
-            os.path.join(subjects_dir, subject, "mri", "orig", "001.mgz"),
-        ]
-        preconform_source = next((p for p in preconform_candidates if os.path.exists(p)), None)
+        rotmask = computeRotmaskMortamet(img)
 
-        if preconform_source is not None:
-            try:
-                rotmask = computeConformRotmask(
-                    source_img=preconform_source,
-                    target_img=ref_path,
-                )
-                logging.info("Computed rotmask from " + preconform_source)
-            except Exception as exc:
-                warnings.warn(
-                    "WARNING: could not compute rotmask from "
-                    + preconform_source
-                    + " ("
-                    + str(exc)
-                    + "), proceeding without rotmask.",
-                    stacklevel=2,
-                )
-        else:
-            warnings.warn(
-                "WARNING: could not find pre-conform source (expected rawavg.mgz "
-                "or orig/001.mgz), proceeding without rotmask.",
-                stacklevel=2,
-            )
-
-    if write_masks and output_dir is not None and rotmask is not None:
+    if write_masks and output_dir is not None:
         _save_mask_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
-
-    # Load the aseg segmentation early (if available): it's used both to
-    # reinforce the headmask below (any already-segmented tissue voxel is
-    # unambiguously part of the head) and later for the GM/CSF SNR masks.
-    aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
-    aseg_data = None
-    if os.path.exists(aseg_path):
-        aseg_data = nib.load(aseg_path).get_fdata()
-    else:
-        warnings.warn(
-            "WARNING: could not open " + aseg_path
-            + ", proceeding without aseg-based headmask reinforcement.",
-            stacklevel=2,
-        )
 
     # Resolve the headmask: either an externally supplied mask, or (the common
     # case) computed via Otsu thresholding on ref_image intensities, excluding
@@ -612,7 +662,7 @@ def checkMotion(
             )
             return _nan_metrics_dict()
     else:
-        headmask = computeHeadmaskOtsu(img, rotmask=rotmask, aseg_data=aseg_data)
+        headmask = computeHeadmaskOtsu(img, rotmask=rotmask)
 
     if write_masks and output_dir is not None:
         _save_mask_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
@@ -643,12 +693,21 @@ def checkMotion(
     else:
         snr_head_value = snr(float(np.median(fg)), float(np.std(fg)), int(fg.size))
 
-    # Tissue-based SNR (GM/WM/CSF) additionally requires aseg/aparc segmentations.
+    # Tissue-based SNR (GM/WM/CSF) always uses FreeSurfer's own conformed
+    # grid (orig.mgz + aseg.mgz + aparc_image): aseg/aparc segmentations only
+    # ever exist in that grid, independent of whichever image was resolved
+    # as the main reference above.
+    tissue_ref_path = os.path.join(subjects_dir, subject, "mri", "orig.mgz")
+    aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
     aparc_path = os.path.join(subjects_dir, subject, "mri", aparc_image)
-    if aseg_data is not None and os.path.exists(aparc_path):
+    missing = [p for p in (tissue_ref_path, aseg_path, aparc_path) if not os.path.exists(p)]
+
+    if not missing:
+        tissue_img = nib.load(tissue_ref_path).get_fdata()
+        aseg_data = nib.load(aseg_path).get_fdata()
         aparc_data = nib.load(aparc_path).get_fdata()
         tissue_snr = snr_tissue(
-            img,
+            tissue_img,
             aseg_data,
             aparc_data,
             nb_erode_wm=nb_erode_wm,
@@ -656,7 +715,7 @@ def checkMotion(
         )
     else:
         warnings.warn(
-            "WARNING: could not open " + aseg_path + " and/or " + aparc_path
+            "WARNING: could not open " + ", ".join(missing)
             + ", returning NaNs for tissue-based SNR.",
             stacklevel=2,
         )
