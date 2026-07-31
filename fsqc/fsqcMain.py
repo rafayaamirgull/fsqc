@@ -741,10 +741,9 @@ def _parse_arguments():
         help="full path to an externally computed head mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
-        "subfolder. Currently required (no internal computation) for the "
-        "motion metrics to be computed; if omitted, or given but the file "
-        "cannot be found, loaded, or does not match orig.mgz's shape, the "
-        "motion metrics are returned as NaN for that subject.",
+        "subfolder. If omitted, a head mask is computed internally. If given "
+        "but the file cannot be found, loaded, or does not match orig.mgz's "
+        "shape, the motion metrics are returned as NaN for that subject.",
         default=None,
         metavar="<filename>",
         required=False,
@@ -755,9 +754,8 @@ def _parse_arguments():
         help="full path to an externally computed air mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
-        "subfolder. Currently required (no internal computation) for the "
-        "motion metrics to be computed; fails the same way as "
-        "--motion-headmask if it cannot be used.",
+        "subfolder. If omitted, an air mask is computed internally. Fails the "
+        "same way as --motion-headmask if given but unusable.",
         default=None,
         metavar="<filename>",
         required=False,
@@ -3833,16 +3831,15 @@ def run_fsqc(
     motion_headmask : str, default: None
         Full path to an externally computed head mask (NIfTI) to use for the
         motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. Currently required (no
-        internal computation) for the motion metrics to be computed; if
-        omitted or given but unusable, motion metrics are returned as NaN
-        for that subject.
+        live under the subject's mri subfolder. If omitted, a head mask is
+        computed internally; if given but unusable, motion metrics are
+        returned as NaN for that subject.
     motion_airmask : str, default: None
         Full path to an externally computed air mask (NIfTI) to use for the
         motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. Currently required (no
-        internal computation) for the motion metrics to be computed; fails
-        the same way as motion_headmask if omitted or unusable.
+        live under the subject's mri subfolder. If omitted, an air mask is
+        computed internally; fails the same way as motion_headmask if given
+        but unusable.
     logfile : str, default: None
         Specify a custom location for the logfile. Default location is the
         output directory.

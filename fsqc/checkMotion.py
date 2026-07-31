@@ -15,8 +15,10 @@ Implemented measures:
 - EFC              : Entropy Focus Criterion
 - QI2              : Mortamet's quality index 2
 - FBER             : Foreground-Background Energy Ratio
-- SNR_HEAD         : Signal-to-Noise Ratio over the (externally supplied)
-                      head mask, requiring no segmentation
+- SNR_HEAD         : Signal-to-Noise Ratio over the head mask (externally
+                      supplied, or computed internally via Otsu
+                      thresholding reinforced by the aparc+aseg
+                      segmentation)
 - SNR_TISSUE_*     : Signal-to-Noise Ratio in the GM/WM/CSF tissue masks
                       derived from a FreeSurfer/FastSurfer segmentation
                       (``_gm``, ``_wm``, ``_csf``), and their mean
@@ -202,6 +204,102 @@ def _computeRotmaskMortamet(img, min_size=500):
     return mask.astype(np.uint8)
 
 
+def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=3):
+    """
+    Compute a head mask via Otsu thresholding, reinforced by segmentation.
+
+    An Otsu threshold (``skimage.filters.threshold_otsu``) is estimated
+    from the finite, positive-intensity voxels of ``img`` (excluding
+    hard-zero/negative conform padding, which would otherwise inject a
+    spike at 0 and skew the bimodal histogram split); voxels above it are
+    flagged as head. This alone can miss dim tissue near the boundary, so
+    the result is unioned with ``seg_data > 0`` -- any voxel already
+    assigned a FreeSurfer/FastSurfer segmentation label is unambiguously
+    part of the head, regardless of intensity. The combined mask can
+    optionally be dilated (see ``nb_dilate``) to close small gaps/
+    protrusions along the boundary; binary hole-filling
+    (``scipy.ndimage.binary_fill_holes``) then seals interior gaps (e.g.
+    ventricles/CSF, or other dark-but-inside-the-head voxels) -- holes can
+    be quite large, but are expected to already be fully enclosed by
+    mask==1 voxels once the segmentation union (and optional dilation) is
+    applied.
+
+    Parameters
+    ----------
+    img : numpy.ndarray
+        3D image array (typically the conformed reference image).
+    seg_data : numpy.ndarray
+        3D FreeSurfer/FastSurfer segmentation array (e.g. ``aparc+aseg``),
+        same shape as ``img``; any nonzero label is treated as head tissue.
+    rotmask : numpy.ndarray or None, optional
+        Optional rotation-artifact mask, same shape as ``img``; non-zero
+        voxels are excluded from the head mask, since they are artifacts
+        rather than genuine head tissue.
+    nb_dilate : int or None, optional
+        Structuring-element size (in voxels) for an optional binary
+        dilation applied to the Otsu/segmentation mask, after the union
+        but before hole-filling. ``0`` or ``None`` disables dilation
+        (default: ``0``).
+
+    Returns
+    -------
+    numpy.ndarray
+        Binary head mask (uint8, 1 = head).
+    """
+    import numpy as np
+    from scipy import ndimage as nd
+    from skimage.filters import threshold_otsu
+    from skimage.morphology import binary_dilation
+
+    finite_positive = img[np.isfinite(img) & (img > 0)]
+    threshold = threshold_otsu(finite_positive) if finite_positive.size else 0
+
+    headmask = (img > threshold) | (seg_data > 0)
+
+    if nb_dilate:
+        headmask = binary_dilation(headmask, np.ones((nb_dilate, nb_dilate, nb_dilate)))
+
+    headmask = nd.binary_fill_holes(headmask).astype(np.uint8)
+
+    if rotmask is not None:
+        headmask[rotmask > 0] = 0
+
+    return headmask
+
+
+def _computeAirmask(headmask, rotmask=None):
+    """
+    Compute an air/background mask as the complement of ``headmask``.
+
+    Currently a simple inversion, kept as its own function (rather than
+    inlining ``headmask == 0`` at the call site) so a more elaborate
+    computation can be substituted later without changing
+    :func:`checkMotion`'s control flow.
+
+    Parameters
+    ----------
+    headmask : numpy.ndarray
+        Binary head mask, e.g. as returned by :func:`_computeHeadmaskOtsu`.
+    rotmask : numpy.ndarray or None, optional
+        Optional rotation-artifact mask, same shape as ``headmask``;
+        non-zero voxels are excluded from the air mask, since they are
+        artifacts rather than genuine background.
+
+    Returns
+    -------
+    numpy.ndarray
+        Binary air mask (uint8, 1 = background/air).
+    """
+    import numpy as np
+
+    airmask = (headmask == 0).astype(np.uint8)
+
+    if rotmask is not None:
+        airmask[rotmask > 0] = 0
+
+    return airmask
+
+
 def _computeQi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_elements=32):
     """
     Compute Mortamet's QI2: goodness-of-fit of the background noise
@@ -288,6 +386,7 @@ def checkMotion(
     aparc_image="aparc+aseg.mgz",
     nb_erode_wm=3,
     nb_erode_csf=1,
+    nb_dilate_headmask=3,
 ):
     """
     Compute MRIQC-style EFC, QI2, FBER, SNR and BG measures for a subject.
@@ -336,38 +435,52 @@ def checkMotion(
         rotmask is computed internally via :func:`_computeRotmaskMortamet`
         (mriqc's Mortamet2009 hard-zero detection) directly on the conformed
         reference image.
-    headmask_file : str, optional
+    headmask_file : str or None, optional
         Full path to an externally supplied head mask (NIfTI), in the same
-        (conformed) grid as the resolved ``ref_image``. Required: no
-        internal computation is currently performed. If omitted or
-        unusable, the motion metrics are returned as NaN.
-    airmask_file : str, optional
+        (conformed) grid as the resolved ``ref_image``. If omitted, the
+        head mask is computed internally via :func:`_computeHeadmaskOtsu`
+        (Otsu thresholding of the conformed reference image, unioned with
+        the ``aparc+aseg`` segmentation, optionally dilated by
+        ``nb_dilate_headmask``, holes filled, and rotmask voxels excluded).
+        If explicitly given but unusable, the motion metrics are returned
+        as NaN.
+    airmask_file : str or None, optional
         Full path to an externally supplied air mask (NIfTI), in the same
         (conformed) grid as the resolved ``ref_image``, used for QI2, FBER,
-        and the background statistics. Required: no internal computation is
-        currently performed. If omitted or unusable, the motion metrics are
-        returned as NaN.
+        and the background statistics. If omitted, the air mask is computed
+        internally via :func:`_computeAirmask` -- currently the complement
+        of ``headmask`` (see ``headmask_file``) with rotmask voxels also
+        excluded, though this may become a more elaborate computation in
+        the future. If explicitly given but unusable, the motion metrics
+        are returned as NaN.
     aseg_image : str, optional
         FreeSurfer/FastSurfer ``aseg`` segmentation under ``mri/``, used for
         the gray matter and CSF SNR masks (default: ``aseg.mgz``). Required
         to be present and on the same grid as ``ref_image``.
     aparc_image : str, optional
         FreeSurfer/FastSurfer ``aparc+aseg``-style segmentation under
-        ``mri/``, used for the white matter SNR mask and for harmonization
-        (default: ``aparc+aseg.mgz``; pass e.g.
-        ``aparc.DKTatlas+aseg.deep.mgz`` for FastSurfer output). Required to
-        be present and on the same grid as ``ref_image``.
+        ``mri/``, used for the white matter SNR mask, for harmonization,
+        and (when ``headmask_file`` is not given) to reinforce the
+        internally computed head mask (default: ``aparc+aseg.mgz``; pass
+        e.g. ``aparc.DKTatlas+aseg.deep.mgz`` for FastSurfer output).
+        Required to be present and on the same grid as ``ref_image``.
     nb_erode_wm : int, optional
         Erosion (in voxels) applied to the white matter mask used both for
         SNR and for harmonization (default: 3).
     nb_erode_csf : int, optional
         Erosion (in voxels) applied to the CSF SNR mask (default: 1).
+    nb_dilate_headmask : int or None, optional
+        Structuring-element size (in voxels) for an optional binary
+        dilation applied to the internally computed head mask (see
+        :func:`_computeHeadmaskOtsu`), before hole-filling. ``0`` or
+        ``None`` disables dilation (default: ``0``). Has no effect when
+        ``headmask_file`` is given.
 
     Returns
     -------
     dict
         Dictionary with keys ``efc``, ``qi2``, ``fber``, ``snr_head``
-        (SNR over the externally supplied head mask), ``snr_tissue_gm``,
+        (SNR over the head mask), ``snr_tissue_gm``,
         ``snr_tissue_wm``, ``snr_tissue_csf``, ``snr_tissue_total`` (mean
         over GM/WM/CSF), and BG summary statistics: ``bg_mean``,
         ``bg_median``, ``bg_std``, ``bg_mad``, ``bg_kurtosis``, ``bg_p05``,
@@ -422,53 +535,9 @@ def checkMotion(
     if write_masks and output_dir is not None:
         _save_nii(img_ras, ref_img.affine, os.path.join(output_dir, "conformed.nii.gz"), dtype="float32")
 
-    # headmask/airmask are currently external-file-only (no internal
-    # computation); both are required.
-    masks = {}
-    for mask_name, mask_file in (("headmask", headmask_file), ("airmask", airmask_file)):
-        if mask_file is None:
-            warnings.warn(
-                "WARNING: no " + mask_name + "_file given for " + subject
-                + " (currently required, no internal computation), returning NaNs.",
-                stacklevel=2,
-            )
-            return _nan_metrics_dict()
-        try:
-            masks[mask_name] = _load_external_mask(mask_file, mask_name, img_ras.shape[:3])
-            logging.info("Using external " + mask_name + " " + mask_file)
-        except Exception as exc:
-            warnings.warn(
-                "WARNING: could not use external " + mask_name + " " + mask_file
-                + " (" + str(exc) + "), returning NaNs.",
-                stacklevel=2,
-            )
-            return _nan_metrics_dict()
-    headmask = masks["headmask"]
-    airmask = masks["airmask"]
-
-    # rotmask: externally supplied, or computed internally (the one mask
-    # still auto-computable)
-    if rotmask_file is not None:
-        try:
-            rotmask = _load_external_mask(rotmask_file, "rotmask", img_ras.shape[:3])
-            logging.info("Using external rotmask " + rotmask_file)
-        except Exception as exc:
-            warnings.warn(
-                "WARNING: could not use external rotmask " + rotmask_file
-                + " (" + str(exc) + "), returning NaNs.",
-                stacklevel=2,
-            )
-            return _nan_metrics_dict()
-    else:
-        rotmask = _computeRotmaskMortamet(img_ras)
-
-    if write_masks and output_dir is not None:
-        _save_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
-        _save_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
-        _save_nii(airmask, ref_img.affine, os.path.join(output_dir, "airmask.nii.gz"))
-
     # aseg/aparc segmentation, on the same grid as ref_image, required for
-    # tissue masks and harmonization
+    # tissue masks, harmonization, and (when headmask_file is not given)
+    # internal headmask computation
     aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
     aparc_path = os.path.join(subjects_dir, subject, "mri", aparc_image)
     seg = {}
@@ -484,6 +553,60 @@ def checkMotion(
             return _nan_metrics_dict()
     aseg_data = seg["aseg"]
     aparc_data = seg["aparc"]
+
+    # rotmask: externally supplied, or computed internally
+    if rotmask_file is not None:
+        try:
+            rotmask = _load_external_mask(rotmask_file, "rotmask", img_ras.shape[:3])
+            logging.info("Using external rotmask " + rotmask_file)
+        except Exception as exc:
+            warnings.warn(
+                "WARNING: could not use external rotmask " + rotmask_file
+                + " (" + str(exc) + "), returning NaNs.",
+                stacklevel=2,
+            )
+            return _nan_metrics_dict()
+    else:
+        rotmask = _computeRotmaskMortamet(img_ras)
+
+    # headmask: externally supplied, or computed internally via Otsu
+    # thresholding unioned with the aparc+aseg segmentation
+    if headmask_file is not None:
+        try:
+            headmask = _load_external_mask(headmask_file, "headmask", img_ras.shape[:3])
+            logging.info("Using external headmask " + headmask_file)
+        except Exception as exc:
+            warnings.warn(
+                "WARNING: could not use external headmask " + headmask_file
+                + " (" + str(exc) + "), returning NaNs.",
+                stacklevel=2,
+            )
+            return _nan_metrics_dict()
+    else:
+        headmask = _computeHeadmaskOtsu(
+            img_ras, aparc_data, rotmask=rotmask, nb_dilate=nb_dilate_headmask
+        )
+
+    # airmask: externally supplied, or computed internally as the
+    # complement of headmask
+    if airmask_file is not None:
+        try:
+            airmask = _load_external_mask(airmask_file, "airmask", img_ras.shape[:3])
+            logging.info("Using external airmask " + airmask_file)
+        except Exception as exc:
+            warnings.warn(
+                "WARNING: could not use external airmask " + airmask_file
+                + " (" + str(exc) + "), returning NaNs.",
+                stacklevel=2,
+            )
+            return _nan_metrics_dict()
+    else:
+        airmask = _computeAirmask(headmask, rotmask=rotmask)
+
+    if write_masks and output_dir is not None:
+        _save_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
+        _save_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
+        _save_nii(airmask, ref_img.affine, os.path.join(output_dir, "airmask.nii.gz"))
 
     gm_mask = _tissue_mask_from_labels(aseg_data, _GM_LABELS, nb_erode=0)
     wm_mask = _tissue_mask_from_labels(aparc_data, _WM_LABELS, nb_erode=nb_erode_wm)
