@@ -438,7 +438,10 @@ def checkMotion(
         intermediate images and masks used internally as NIfTI files under
         ``output_dir`` -- the conformed reference image (``conformed``), the
         ``rotmask``, ``headmask``, ``airmask`` (whichever computed or
-        externally supplied), the GM/WM/CSF tissue masks used for SNR
+        externally supplied), a connected-components labeling of
+        ``headmask`` (``headmask_components``, one label per connected
+        component -- a fragmented, non-single-component head mask will show
+        more than one label), the GM/WM/CSF tissue masks used for SNR
         (``gmmask``/``wmmask``/``csfmask``; ``wmmask`` is also the one used
         for harmonization), and the harmonized reference image
         (``harmonized``) (default: ``False``).
@@ -504,6 +507,7 @@ def checkMotion(
 
     import numpy as np
     from mriqc.qc.anatomical import efc, fber, snr, summary_stats
+    from scipy import ndimage as nd
 
     def _nan_metrics_dict():
         return {
@@ -626,6 +630,14 @@ def checkMotion(
         _save_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
         _save_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
         _save_nii(airmask, ref_img.affine, os.path.join(output_dir, "airmask.nii.gz"))
+
+        # debug: label each connected component of headmask individually,
+        # so a fragmented (non-single-component) head mask is visible
+        headmask_components, _ = nd.label(headmask)
+        _save_nii(
+            headmask_components, ref_img.affine,
+            os.path.join(output_dir, "headmask_components.nii.gz"), dtype="int32",
+        )
 
     gm_mask = _tissue_mask_from_labels(aseg_data, _GM_LABELS, nb_erode=0)
     wm_mask = _tissue_mask_from_labels(aparc_data, _WM_LABELS, nb_erode=nb_erode_wm)
