@@ -49,11 +49,11 @@ def _tissue_mask_from_labels(seg_data, labels, nb_erode=0):
     return mask
 
 
-def _save_mask_nii(mask, affine, out_path):
-    """Save a binary mask array as a NIfTI (.nii/.nii.gz) image."""
+def _save_nii(img, affine, out_path, dtype="uint8"):
+    """Save an array as a NIfTI (.nii/.nii.gz) image, cast to ``dtype``."""
     import nibabel as nib
 
-    nib.save(nib.nifti1.Nifti1Image(mask.astype("uint8"), affine), out_path)
+    nib.save(nib.nifti1.Nifti1Image(img.astype(dtype), affine), out_path)
 
 
 def _load_external_mask(mask_file, mask_label, ref_img_shape, binarize=True):
@@ -322,10 +322,14 @@ def checkMotion(
         to (e.g. the caller's ``metrics_outdir``). Required for
         ``write_masks`` to have any effect.
     write_masks : bool, optional
-        If true and ``output_dir`` is given, save the ``rotmask``,
-        ``headmask``, ``airmask`` (whichever computed or externally
-        supplied) and the harmonized image as NIfTI images under
-        ``output_dir`` (default: ``False``).
+        Debugging switch: if true and ``output_dir`` is given, save the
+        intermediate images and masks used internally as NIfTI files under
+        ``output_dir`` -- the conformed reference image (``conformed``), the
+        ``rotmask``, ``headmask``, ``airmask`` (whichever computed or
+        externally supplied), the GM/WM/CSF tissue masks used for SNR
+        (``gmmask``/``wmmask``/``csfmask``; ``wmmask`` is also the one used
+        for harmonization), and the harmonized reference image
+        (``harmonized``) (default: ``False``).
     rotmask_file : str or None, optional
         Full path to an externally supplied rotation mask (NIfTI), in the
         same (conformed) grid as the resolved ``ref_image``. If omitted, the
@@ -415,6 +419,9 @@ def checkMotion(
     ref_img = _conformImageToRAS(ref_path)
     img_ras = ref_img.get_fdata()
 
+    if write_masks and output_dir is not None:
+        _save_nii(img_ras, ref_img.affine, os.path.join(output_dir, "conformed.nii.gz"), dtype="float32")
+
     # headmask/airmask are currently external-file-only (no internal
     # computation); both are required.
     masks = {}
@@ -456,9 +463,9 @@ def checkMotion(
         rotmask = _computeRotmaskMortamet(img_ras)
 
     if write_masks and output_dir is not None:
-        _save_mask_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
-        _save_mask_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
-        _save_mask_nii(airmask, ref_img.affine, os.path.join(output_dir, "airmask.nii.gz"))
+        _save_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
+        _save_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
+        _save_nii(airmask, ref_img.affine, os.path.join(output_dir, "airmask.nii.gz"))
 
     # aseg/aparc segmentation, on the same grid as ref_image, required for
     # tissue masks and harmonization
@@ -482,6 +489,11 @@ def checkMotion(
     wm_mask = _tissue_mask_from_labels(aparc_data, _WM_LABELS, nb_erode=nb_erode_wm)
     csf_mask = _tissue_mask_from_labels(aseg_data, _CSF_LABELS, nb_erode=nb_erode_csf)
 
+    if write_masks and output_dir is not None:
+        _save_nii(gm_mask, ref_img.affine, os.path.join(output_dir, "gmmask.nii.gz"))
+        _save_nii(wm_mask, ref_img.affine, os.path.join(output_dir, "wmmask.nii.gz"))
+        _save_nii(csf_mask, ref_img.affine, os.path.join(output_dir, "csfmask.nii.gz"))
+
     # harmonize: rescale so the white-matter mask's median intensity is
     # 1000, mirroring mriqc's in_noinu
     img_harmonized = _harmonizeImage(img_ras, wm_mask)
@@ -494,8 +506,9 @@ def checkMotion(
         return _nan_metrics_dict()
 
     if write_masks and output_dir is not None:
-        _save_mask_nii(
-            img_harmonized, ref_img.affine, os.path.join(output_dir, "harmonized.nii.gz")
+        _save_nii(
+            img_harmonized, ref_img.affine, os.path.join(output_dir, "harmonized.nii.gz"),
+            dtype="float32",
         )
 
     # one summary_stats() call, on the harmonized image, feeds tissue SNR,
