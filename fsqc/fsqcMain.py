@@ -91,22 +91,22 @@ def get_help(print_help=True, return_help=False):
     - rot_tal_x     ...  rotation component of the Talairach transform around the x axis
     - rot_tal_y     ...  rotation component of the Talairach transform around the y axis
     - rot_tal_z     ...  rotation component of the Talairach transform around the z axis
-    - motion_efc    ...  MRIQC-style entropy focus criterion in norm.mgz
-    - motion_qi2    ...  MRIQC-style Mortamet quality index 2 in norm.mgz
-    - motion_fber   ...  MRIQC-style foreground-background energy ratio in norm.mgz
-    - motion_snr        ...  MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks in norm.mgz
-    - motion_snr_gm     ...  MRIQC-style signal-to-noise ratio in the gray matter mask in norm.mgz
-    - motion_snr_wm     ...  MRIQC-style signal-to-noise ratio in the white matter mask in norm.mgz
-    - motion_snr_csf    ...  MRIQC-style signal-to-noise ratio in the CSF mask in norm.mgz
-    - motion_snr_head   ...  MRIQC-style signal-to-noise ratio over the whole head mask in norm.mgz
-    - motion_bg_mean     ...  mean background intensity in norm.mgz
-    - motion_bg_median   ...  median background intensity in norm.mgz
-    - motion_bg_std      ...  standard deviation of background intensity in norm.mgz
-    - motion_bg_mad      ...  median absolute deviation of background intensity in norm.mgz
-    - motion_bg_kurtosis ...  kurtosis of background intensity in norm.mgz
-    - motion_bg_p05      ...  5th percentile of background intensity in norm.mgz
-    - motion_bg_p95      ...  95th percentile of background intensity in norm.mgz
-    - motion_bg_n        ...  number of background voxels in norm.mgz
+    - motion_efc             ...  MRIQC-style entropy focus criterion (harmonized orig.mgz)
+    - motion_qi2             ...  MRIQC-style Mortamet quality index 2 (conformed orig.mgz)
+    - motion_fber            ...  MRIQC-style foreground-background energy ratio (harmonized orig.mgz)
+    - motion_snr_tissue_gm    ...  MRIQC-style signal-to-noise ratio in the gray matter mask (harmonized orig.mgz)
+    - motion_snr_tissue_wm    ...  MRIQC-style signal-to-noise ratio in the white matter mask (harmonized orig.mgz)
+    - motion_snr_tissue_csf   ...  MRIQC-style signal-to-noise ratio in the CSF mask (harmonized orig.mgz)
+    - motion_snr_tissue_total ...  MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)
+    - motion_snr_head        ...  MRIQC-style signal-to-noise ratio over the externally supplied head mask (harmonized orig.mgz)
+    - motion_bg_mean     ...  mean background intensity (harmonized orig.mgz)
+    - motion_bg_median   ...  median background intensity (harmonized orig.mgz)
+    - motion_bg_std      ...  standard deviation of background intensity (harmonized orig.mgz)
+    - motion_bg_mad      ...  median absolute deviation of background intensity (harmonized orig.mgz)
+    - motion_bg_kurtosis ...  kurtosis of background intensity (harmonized orig.mgz)
+    - motion_bg_p05      ...  5th percentile of background intensity (harmonized orig.mgz)
+    - motion_bg_p95      ...  95th percentile of background intensity (harmonized orig.mgz)
+    - motion_bg_n        ...  number of background voxels (harmonized orig.mgz)
 
     The program will use an existing output directory (or try to create it) and
     write a csv table into that location. The csv table will contain the above
@@ -741,9 +741,10 @@ def _parse_arguments():
         help="full path to an externally computed head mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
-        "subfolder. If omitted, a headmask is computed internally via Otsu "
-        "thresholding. Fails the same way as --motion-rotmask if it cannot be "
-        "used.",
+        "subfolder. Currently required (no internal computation) for the "
+        "motion metrics to be computed; if omitted, or given but the file "
+        "cannot be found, loaded, or does not match orig.mgz's shape, the "
+        "motion metrics are returned as NaN for that subject.",
         default=None,
         metavar="<filename>",
         required=False,
@@ -754,8 +755,9 @@ def _parse_arguments():
         help="full path to an externally computed air mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
-        "subfolder. If omitted, the complement of the headmask/rotmask is used. "
-        "Fails the same way as --motion-rotmask if it cannot be used.",
+        "subfolder. Currently required (no internal computation) for the "
+        "motion metrics to be computed; fails the same way as "
+        "--motion-headmask if it cannot be used.",
         default=None,
         metavar="<filename>",
         required=False,
@@ -1890,10 +1892,10 @@ def _do_fsqc(argsDict):
                     motion_efc = motion_metrics["efc"]
                     motion_qi2 = motion_metrics["qi2"]
                     motion_fber = motion_metrics["fber"]
-                    motion_snr = motion_metrics["snr"]
-                    motion_snr_gm = motion_metrics["snr_gm"]
-                    motion_snr_wm = motion_metrics["snr_wm"]
-                    motion_snr_csf = motion_metrics["snr_csf"]
+                    motion_snr_tissue_total = motion_metrics["snr_tissue_total"]
+                    motion_snr_tissue_gm = motion_metrics["snr_tissue_gm"]
+                    motion_snr_tissue_wm = motion_metrics["snr_tissue_wm"]
+                    motion_snr_tissue_csf = motion_metrics["snr_tissue_csf"]
                     motion_snr_head = motion_metrics["snr_head"]
                     motion_bg_mean = motion_metrics["bg_mean"]
                     motion_bg_median = motion_metrics["bg_median"]
@@ -1903,16 +1905,16 @@ def _do_fsqc(argsDict):
                     motion_bg_p05 = motion_metrics["bg_p05"]
                     motion_bg_p95 = motion_metrics["bg_p95"]
                     motion_bg_n = motion_metrics["bg_n"]
-                except:
+                except Exception as e:
                     logging.error("ERROR: Motion failed for " + subject)
                     logging.error("Reason: " + str(e))
                     motion_efc = np.nan
                     motion_qi2 = np.nan
                     motion_fber = np.nan
-                    motion_snr = np.nan
-                    motion_snr_gm = np.nan
-                    motion_snr_wm = np.nan
-                    motion_snr_csf = np.nan
+                    motion_snr_tissue_total = np.nan
+                    motion_snr_tissue_gm = np.nan
+                    motion_snr_tissue_wm = np.nan
+                    motion_snr_tissue_csf = np.nan
                     motion_snr_head = np.nan
                     motion_bg_mean = np.nan
                     motion_bg_median = np.nan
@@ -1921,7 +1923,7 @@ def _do_fsqc(argsDict):
                     motion_bg_kurtosis = np.nan
                     motion_bg_p05 = np.nan
                     motion_bg_p95 = np.nan
-                    motion_bg_n = np.nan
+                    motion_bg_n = 0
                     metrics_status = 1
                     if argsDict["exit_on_error"] is True:
                         raise
@@ -1948,10 +1950,10 @@ def _do_fsqc(argsDict):
                         "motion_efc" : motion_efc,
                         "motion_qi2" : motion_qi2,
                         "motion_fber" : motion_fber,
-                        "motion_snr" : motion_snr,
-                        "motion_snr_gm" : motion_snr_gm,
-                        "motion_snr_wm" : motion_snr_wm,
-                        "motion_snr_csf" : motion_snr_csf,
+                        "motion_snr_tissue_total" : motion_snr_tissue_total,
+                        "motion_snr_tissue_gm" : motion_snr_tissue_gm,
+                        "motion_snr_tissue_wm" : motion_snr_tissue_wm,
+                        "motion_snr_tissue_csf" : motion_snr_tissue_csf,
                         "motion_snr_head" : motion_snr_head,
                         "motion_bg_mean" : motion_bg_mean,
                         "motion_bg_median" : motion_bg_median,
@@ -2992,10 +2994,10 @@ def _do_fsqc(argsDict):
                 "motion_efc",
                 "motion_qi2",
                 "motion_fber",
-                "motion_snr",
-                "motion_snr_gm",
-                "motion_snr_wm",
-                "motion_snr_csf",
+                "motion_snr_tissue_total",
+                "motion_snr_tissue_gm",
+                "motion_snr_tissue_wm",
+                "motion_snr_tissue_csf",
                 "motion_snr_head",
                 "motion_bg_mean",
                 "motion_bg_median",
@@ -3831,15 +3833,16 @@ def run_fsqc(
     motion_headmask : str, default: None
         Full path to an externally computed head mask (NIfTI) to use for the
         motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. If omitted, a headmask is
-        computed internally via Otsu thresholding; fails the same way as
-        motion_rotmask if given but unusable.
+        live under the subject's mri subfolder. Currently required (no
+        internal computation) for the motion metrics to be computed; if
+        omitted or given but unusable, motion metrics are returned as NaN
+        for that subject.
     motion_airmask : str, default: None
         Full path to an externally computed air mask (NIfTI) to use for the
         motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. If omitted, the complement of
-        the headmask/rotmask is used; fails the same way as motion_rotmask if
-        given but unusable.
+        live under the subject's mri subfolder. Currently required (no
+        internal computation) for the motion metrics to be computed; fails
+        the same way as motion_headmask if omitted or unusable.
     logfile : str, default: None
         Specify a custom location for the logfile. Default location is the
         output directory.

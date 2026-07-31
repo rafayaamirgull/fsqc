@@ -5,6 +5,7 @@ nibabel
 numpy
 pandas
 scipy
+mriqc
 scikit-image
 scikit-learn
 transforms3d
