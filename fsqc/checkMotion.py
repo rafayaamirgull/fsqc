@@ -58,7 +58,7 @@ def _save_nii(img, affine, out_path, dtype="uint8"):
     nib.save(nib.nifti1.Nifti1Image(img.astype(dtype), affine), out_path)
 
 
-def _load_external_mask(mask_file, mask_label, ref_img_shape, binarize=True):
+def _load_external_mask(mask_file, mask_label, ref_img_shape, binarize=True, conform=False):
     """
     Load and validate an externally supplied volume against ``ref_img_shape``.
 
@@ -67,12 +67,25 @@ def _load_external_mask(mask_file, mask_label, ref_img_shape, binarize=True):
     (missing file, load error, shape mismatch); the caller is expected to
     warn and fail closed (return NaNs) on exception, since an explicitly
     supplied mask/segmentation should never be silently ignored.
+
+    If ``conform=True``, the volume is passed through
+    :func:`_conformImageToRAS` (squeeze + RAS reorientation, no
+    interpolation) before use -- for volumes such as FreeSurfer/FastSurfer's
+    ``aseg``/``aparc`` segmentations, which live in the same native
+    (unconformed) grid as the pre-conform reference image and would
+    otherwise be spatially misaligned with it once it's RAS-conformed,
+    despite matching shapes (both are 256^3 cubes). Externally supplied
+    masks (rotmask/headmask/airmask) are documented as already being in the
+    conformed grid, so they use ``conform=False``.
     """
     import nibabel as nib
 
     if not os.path.exists(mask_file):
         raise FileNotFoundError("could not find external " + mask_label + " " + mask_file)
-    candidate = nib.load(mask_file).get_fdata()
+    mask_img = nib.load(mask_file)
+    if conform:
+        mask_img = _conformImageToRAS(mask_img)
+    candidate = mask_img.get_fdata()
     if candidate.shape[:3] != ref_img_shape:
         raise ValueError(
             "external " + mask_label + " " + mask_file + " has shape "
@@ -239,7 +252,7 @@ def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=3):
         Structuring-element size (in voxels) for an optional binary
         dilation applied to the Otsu/segmentation mask, after the union
         but before hole-filling. ``0`` or ``None`` disables dilation
-        (default: ``0``).
+        (default: ``3``).
 
     Returns
     -------
@@ -473,7 +486,7 @@ def checkMotion(
         Structuring-element size (in voxels) for an optional binary
         dilation applied to the internally computed head mask (see
         :func:`_computeHeadmaskOtsu`), before hole-filling. ``0`` or
-        ``None`` disables dilation (default: ``0``). Has no effect when
+        ``None`` disables dilation (default: ``3``). Has no effect when
         ``headmask_file`` is given.
 
     Returns
@@ -537,13 +550,19 @@ def checkMotion(
 
     # aseg/aparc segmentation, on the same grid as ref_image, required for
     # tissue masks, harmonization, and (when headmask_file is not given)
-    # internal headmask computation
+    # internal headmask computation. aseg/aparc live in FreeSurfer's native
+    # (unconformed, typically LIA) orientation, same as ref_image before
+    # conforming -- conform=True reorients them to RAS to stay voxel-aligned
+    # with img_ras/img_harmonized, since matching shape alone (both 256^3
+    # cubes) doesn't guarantee matching orientation.
     aseg_path = os.path.join(subjects_dir, subject, "mri", aseg_image)
     aparc_path = os.path.join(subjects_dir, subject, "mri", aparc_image)
     seg = {}
     for seg_name, seg_path in (("aseg", aseg_path), ("aparc", aparc_path)):
         try:
-            seg[seg_name] = _load_external_mask(seg_path, seg_name, img_ras.shape[:3], binarize=False)
+            seg[seg_name] = _load_external_mask(
+                seg_path, seg_name, img_ras.shape[:3], binarize=False, conform=True
+            )
         except Exception as exc:
             warnings.warn(
                 "WARNING: could not use " + seg_name + " " + seg_path
