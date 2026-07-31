@@ -64,24 +64,26 @@ def _save_mask_nii(mask, affine, out_path):
     nib.save(nib.nifti1.Nifti1Image(mask.astype("uint8"), affine), out_path)
 
 
-def _load_external_mask(mask_file, mask_label):
+def _load_external_mask(mask_file, mask_label, ref_img_shape):
     """
-    Load and validate an externally supplied mask file against ``img``'s shape.
+    Load and validate an externally supplied mask file against ``ref_img_shape``.
 
     Returns the binarized mask array on success. Raises ``FileNotFoundError``
     or ``ValueError`` on failure (missing file, load error, shape mismatch);
     the caller is expected to warn and fail closed (return NaNs) on exception,
     since an explicitly supplied mask should never be silently ignored.
     """
+    import nibabel as nib
+
     if not os.path.exists(mask_file):
         raise FileNotFoundError("could not find external " + mask_label + " " + mask_file)
     candidate = nib.load(mask_file).get_fdata()
-    if candidate.shape[:3] != img.shape[:3]:
+    if candidate.shape[:3] != ref_img_shape:
         raise ValueError(
             "external " + mask_label + " " + mask_file + " has shape "
-            + str(candidate.shape[:3]) + ", expected " + str(img.shape[:3])
+            + str(candidate.shape[:3]) + ", expected " + str(ref_img_shape)
         )
-    return (candidate > 0).astype(np.uint8)
+    return (candidate > 0).astype("uint8")
 
 
 def _resolve_ref_image(subjects_dir, subject, ref_image=None):
@@ -645,7 +647,7 @@ def checkMotion(
     # on the conformed reference image (no pre-conform comparison needed).
     if rotmask_file is not None:
         try:
-            rotmask = _load_external_mask(rotmask_file, "rotmask")
+            rotmask = _load_external_mask(rotmask_file, "rotmask", img.shape[:3])
             logging.info("Using external rotmask " + rotmask_file)
         except Exception as exc:
             warnings.warn(
@@ -665,7 +667,7 @@ def checkMotion(
     # any rotmask (outside-FOV) voxels from the estimate.
     if headmask_file is not None:
         try:
-            headmask = _load_external_mask(headmask_file, "headmask")
+            headmask = _load_external_mask(headmask_file, "headmask", img.shape[:3])
             logging.info("Using external headmask " + headmask_file)
         except Exception as exc:
             warnings.warn(
@@ -684,7 +686,7 @@ def checkMotion(
     # supplied mask, or (the common case) the complement of headmask/rotmask.
     if airmask_file is not None:
         try:
-            airmask = _load_external_mask(airmask_file, "airmask")
+            airmask = _load_external_mask(airmask_file, "airmask", img.shape[:3])
             logging.info("Using external airmask " + airmask_file)
         except Exception as exc:
             warnings.warn(
