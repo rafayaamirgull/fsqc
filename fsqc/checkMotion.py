@@ -15,6 +15,8 @@ Implemented measures:
 import os
 
 # -----------------------------------------------------------------------------
+# private helper functions and variables
+# -----------------------------------------------------------------------------
 
 # FreeSurferColorLUT label IDs used to build tissue masks for SNR estimation.
 # WM/GM lists match fsqc.checkSNR.checkSNR for consistency across the codebase.
@@ -22,6 +24,14 @@ _WM_LABELS = [2, 41, 7, 46, 251, 252, 253, 254, 255, 77, 78, 79]
 _GM_LABELS = [3, 42]
 _CSF_LABELS = [24, 4, 43, 5, 44, 14, 15]
 
+#: Fallback chain (relative to a subject's mri/ dir) for checkMotion's
+#: reference image, in preference order: the true pre-conform, native
+#: volume first, then progressively more processed substitutes.
+_REF_IMAGE_CANDIDATES = (
+    os.path.join("orig", "001.mgz"),
+    "rawavg.mgz",
+    "orig.mgz",
+)
 
 def _airmask_from_headmask(headmask, rotmask=None):
     """Create an air mask as the complement of the head mask."""
@@ -54,44 +64,24 @@ def _save_mask_nii(mask, affine, out_path):
     nib.save(nib.nifti1.Nifti1Image(mask.astype("uint8"), affine), out_path)
 
 
-def conformImage(in_img):
+def _load_external_mask(mask_file, mask_label):
     """
-    Conform an anatomical image the way mriqc's anatomical workflow does.
+    Load and validate an externally supplied mask file against ``img``'s shape.
 
-    Mirrors mriqc's ``mriqc.interfaces.common.ConformImage`` as it is
-    actually invoked in mriqc's anatomical workflow
-    (``ConformImage(check_dtype=False)``): squeeze a redundant 4th
-    dimension, then reorient to RAS canonical orientation
-    (``nib.as_closest_canonical``). No dtype casting and no resampling to a
-    fixed voxel size/shape is performed (unlike FreeSurfer's own
-    ``mri_convert --conform``).
-
-    Parameters
-    ----------
-    in_img : nibabel.spatialimages.SpatialImage or str or os.PathLike
-        Input image, or a path to load one from.
-
-    Returns
-    -------
-    nibabel.spatialimages.SpatialImage
-        Conformed (squeezed + RAS-reoriented) image.
+    Returns the binarized mask array on success. Raises ``FileNotFoundError``
+    or ``ValueError`` on failure (missing file, load error, shape mismatch);
+    the caller is expected to warn and fail closed (return NaNs) on exception,
+    since an explicitly supplied mask should never be silently ignored.
     """
-    import nibabel as nib
-
-    if isinstance(in_img, (str, os.PathLike)):
-        in_img = nib.load(in_img)
-
-    return nib.as_closest_canonical(nib.squeeze_image(in_img))
-
-
-#: Fallback chain (relative to a subject's mri/ dir) for checkMotion's
-#: reference image, in preference order: the true pre-conform, native
-#: volume first, then progressively more processed substitutes.
-_REF_IMAGE_CANDIDATES = (
-    os.path.join("orig", "001.mgz"),
-    "rawavg.mgz",
-    "orig.mgz",
-)
+    if not os.path.exists(mask_file):
+        raise FileNotFoundError("could not find external " + mask_label + " " + mask_file)
+    candidate = nib.load(mask_file).get_fdata()
+    if candidate.shape[:3] != img.shape[:3]:
+        raise ValueError(
+            "external " + mask_label + " " + mask_file + " has shape "
+            + str(candidate.shape[:3]) + ", expected " + str(img.shape[:3])
+        )
+    return (candidate > 0).astype(np.uint8)
 
 
 def _resolve_ref_image(subjects_dir, subject, ref_image=None):
@@ -142,7 +132,37 @@ def _resolve_ref_image(subjects_dir, subject, ref_image=None):
     return None
 
 
-def computeRotmaskMortamet(img, min_size=500):
+def _conformImageToRAS(in_img):
+    """
+    Conform an anatomical image the way mriqc's anatomical workflow does.
+
+    Mirrors mriqc's ``mriqc.interfaces.common.ConformImage`` as it is
+    actually invoked in mriqc's anatomical workflow
+    (``ConformImage(check_dtype=False)``): squeeze a redundant 4th
+    dimension, then reorient to RAS canonical orientation
+    (``nib.as_closest_canonical``). No dtype casting and no resampling to a
+    fixed voxel size/shape is performed (unlike FreeSurfer's own
+    ``mri_convert --conform``).
+
+    Parameters
+    ----------
+    in_img : nibabel.spatialimages.SpatialImage or str or os.PathLike
+        Input image, or a path to load one from.
+
+    Returns
+    -------
+    nibabel.spatialimages.SpatialImage
+        Conformed (squeezed + RAS-reoriented) image.
+    """
+    import nibabel as nib
+
+    if isinstance(in_img, (str, os.PathLike)):
+        in_img = nib.load(in_img)
+
+    return nib.as_closest_canonical(nib.squeeze_image(in_img))
+
+
+def _computeRotmaskMortamet(img, min_size=500):
     """
     Compute a rotation-artifact mask using the method of [Mortamet2009]_.
 
@@ -197,7 +217,7 @@ def computeRotmaskMortamet(img, min_size=500):
     return mask.astype(np.uint8)
 
 
-def computeHeadmaskOtsu(img, rotmask=None, aseg_data=None):
+def _computeHeadmaskOtsu(img, rotmask=None, aseg_data=None):
     """
     Compute a head mask from image intensities using Otsu thresholding.
 
@@ -280,8 +300,11 @@ def computeHeadmaskOtsu(img, rotmask=None, aseg_data=None):
 
     return headmask
 
+# -----------------------------------------------------------------------------
+# metrics
+# -----------------------------------------------------------------------------
 
-def efc(img, framemask=None):
+def efc(img, rotmask=None):
     """
     Compute MRIQC's entropy focus criterion (EFC).
 
@@ -289,10 +312,10 @@ def efc(img, framemask=None):
     """
     import numpy as np
 
-    if framemask is None:
-        framemask = np.zeros_like(img, dtype=np.uint8)
+    if rotmask is None:
+        rotmask = np.zeros_like(img, dtype=np.uint8)
 
-    valid = framemask == 0
+    valid = rotmask == 0
     n_vox = int(np.sum(valid))
     if n_vox < 2:
         return np.nan
@@ -309,7 +332,7 @@ def efc(img, framemask=None):
     )
 
 
-def fber(img, headmask, airmask):
+def fber(img, headmask, rotmask=None):
     """
     Compute MRIQC's foreground-background energy ratio (FBER).
 
@@ -322,6 +345,12 @@ def fber(img, headmask, airmask):
         return np.nan
 
     fg_mu = np.median(np.abs(fg) ** 2)
+
+    airmask = np.ones_like(headmask, dtype=np.uint8)
+    airmask[headmask > 0] = 0
+
+    if rotmask is not None:
+        airmask[rotmask > 0] = 0
 
     bg = img[airmask == 1]
     if bg.size == 0:
@@ -477,6 +506,9 @@ def qi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_elements=32
 
     return float(np.abs(kde_pdf[-kdethi:] - chi_pdf[-kdethi:]).mean())
 
+# -----------------------------------------------------------------------------
+# main
+# -----------------------------------------------------------------------------
 
 def checkMotion(
     subjects_dir,
@@ -509,7 +541,7 @@ def checkMotion(
         whenever a fallback is used. Pass an explicit path (relative to
         ``mri/``) to bypass the fallback chain. Whichever image is resolved
         is conformed the way mriqc's anatomical workflow does (see
-        :func:`conformImage`) before any metric is computed.
+        :func:`_conformImageToRAS`) before any metric is computed.
     output_dir : str or None, optional
         Subject-specific metrics output folder to write debug mask images
         to (e.g. the caller's ``metrics_outdir``). Required for
@@ -521,7 +553,7 @@ def checkMotion(
     rotmask_file : str or None, optional
         Full path to an externally supplied rotation mask (NIfTI), in the
         same (conformed) grid as the resolved ``ref_image``. If omitted, the
-        rotmask is computed internally via :func:`computeRotmaskMortamet`
+        rotmask is computed internally via :func:`_computeRotmaskMortamet`
         (mriqc's Mortamet2009 hard-zero detection) directly on the conformed
         reference image; no pre-conform comparison is needed.
     headmask_file : str or None, optional
@@ -605,27 +637,8 @@ def checkMotion(
 
     # conform the reference volume the way mriqc's anatomical workflow does
     # (squeeze + RAS-reorient, no resampling) before computing any metric
-    ref_img = conformImage(ref_path)
+    ref_img = _conformImageToRAS(ref_path)
     img = ref_img.get_fdata()
-
-    def _load_external_mask(mask_file, mask_label):
-        """
-        Load and validate an externally supplied mask file against ``img``'s shape.
-
-        Returns the binarized mask array on success. Raises ``FileNotFoundError``
-        or ``ValueError`` on failure (missing file, load error, shape mismatch);
-        the caller is expected to warn and fail closed (return NaNs) on exception,
-        since an explicitly supplied mask should never be silently ignored.
-        """
-        if not os.path.exists(mask_file):
-            raise FileNotFoundError("could not find external " + mask_label + " " + mask_file)
-        candidate = nib.load(mask_file).get_fdata()
-        if candidate.shape[:3] != img.shape[:3]:
-            raise ValueError(
-                "external " + mask_label + " " + mask_file + " has shape "
-                + str(candidate.shape[:3]) + ", expected " + str(img.shape[:3])
-            )
-        return (candidate > 0).astype(np.uint8)
 
     # Resolve the rotmask: either an externally supplied mask, or (the common
     # case) computed via mriqc's Mortamet2009 hard-zero detection directly
@@ -642,7 +655,7 @@ def checkMotion(
             )
             return _nan_metrics_dict()
     else:
-        rotmask = computeRotmaskMortamet(img)
+        rotmask = _computeRotmaskMortamet(img)
 
     if write_masks and output_dir is not None:
         _save_mask_nii(rotmask, ref_img.affine, os.path.join(output_dir, "rotmask.nii.gz"))
@@ -662,7 +675,7 @@ def checkMotion(
             )
             return _nan_metrics_dict()
     else:
-        headmask = computeHeadmaskOtsu(img, rotmask=rotmask)
+        headmask = _computeHeadmaskOtsu(img, rotmask=rotmask)
 
     if write_masks and output_dir is not None:
         _save_mask_nii(headmask, ref_img.affine, os.path.join(output_dir, "headmask.nii.gz"))
@@ -724,9 +737,9 @@ def checkMotion(
     # Assemble the final metrics dict: EFC/QI2/FBER/whole-head SNR first, then
     # tissue-based SNR and background summary stats merged in.
     metrics = {
-        "efc": efc(img, framemask=rotmask),
-        "qi2": qi2(img, airmask),
-        "fber": fber(img, headmask, airmask),
+        "efc": efc(img, rotmask=rotmask),
+        "qi2": qi2(img, airmask=airmask),
+        "fber": fber(img, headmask=headmask, rotmask=rotmask),
         "snr_head": snr_head_value,
     }
     metrics.update(tissue_snr)
