@@ -217,7 +217,7 @@ def _computeRotmaskMortamet(img, min_size=500):
     return mask.astype(np.uint8)
 
 
-def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=3):
+def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=10):
     """
     Compute a head mask via Otsu thresholding, reinforced by segmentation.
 
@@ -252,7 +252,7 @@ def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=3):
         Structuring-element size (in voxels) for an optional binary
         dilation applied to the Otsu/segmentation mask, after the union
         but before hole-filling. ``0`` or ``None`` disables dilation
-        (default: ``3``).
+        (default: ``10``).
 
     Returns
     -------
@@ -399,7 +399,7 @@ def checkMotion(
     aparc_image="aparc+aseg.mgz",
     nb_erode_wm=3,
     nb_erode_csf=1,
-    nb_dilate_headmask=3,
+    nb_dilate_headmask=10,
 ):
     """
     Compute MRIQC-style EFC, QI2, FBER, SNR and BG measures for a subject.
@@ -489,7 +489,7 @@ def checkMotion(
         Structuring-element size (in voxels) for an optional binary
         dilation applied to the internally computed head mask (see
         :func:`_computeHeadmaskOtsu`), before hole-filling. ``0`` or
-        ``None`` disables dilation (default: ``3``). Has no effect when
+        ``None`` disables dilation (default: ``10``). Has no effect when
         ``headmask_file`` is given.
 
     Returns
