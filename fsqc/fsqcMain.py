@@ -1689,9 +1689,15 @@ def _do_fsqc(argsDict):
             # set images
 
             if argsDict["fastsurfer"] is True:
+                ref_image = "orig.mgz"
+                nu_image = "orig_nu.mgz"
                 aparc_image = "aparc.DKTatlas+aseg.deep.mgz"
+                aseg_image = "aseg.mgz"
             else:
+                ref_image = "orig.mgz"
+                nu_image = "nu.mgz"
                 aparc_image = "aparc+aseg.mgz"
+                aseg_image = "aseg.mgz"
 
             # ----------------------------------------------------------------------
             # add subject to dictionary
@@ -1881,11 +1887,15 @@ def _do_fsqc(argsDict):
                     motion_metrics = checkMotion(
                         subjects_dir=argsDict["subjects_dir"],
                         subject=subject,
+                        ref_image=ref_image,
+                        nu_image=nu_image,
                         output_dir=metrics_outdir,
                         rotmask_file=argsDict["motion_rotmask"],
                         headmask_file=argsDict["motion_headmask"],
                         airmask_file=argsDict["motion_airmask"],
                         aparc_image=aparc_image,
+                        aseg_image=aseg_image,
+                        write_masks=True,
                     )
                     motion_efc = motion_metrics["efc"]
                     motion_qi2 = motion_metrics["qi2"]

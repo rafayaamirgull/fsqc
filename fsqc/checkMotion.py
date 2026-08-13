@@ -3,13 +3,25 @@ This module provides MRIQC-style image quality metrics related to motion/noise.
 
 Metrics (EFC, FBER, SNR, background summary stats) are computed via
 ``mriqc.qc.anatomical``, on a single unified image grid shared with the
-subject's FreeSurfer/FastSurfer ``aseg``/``aparc`` segmentation (``orig.mgz``
-by default); QI2 is computed by a local, pure-computation port of mriqc's
+subject's FreeSurfer/FastSurfer ``aseg``/``aparc`` segmentation. Two
+reference volumes are used, mirroring mriqc's own ``in_ras``/``in_noinu``
+split: the merely-conformed ``ref_image`` (``orig.mgz`` by default) feeds
+QI2 and the rotation mask, while the bias-field-corrected ``nu_image``
+(``nu.mgz`` by default; ``orig_nu.mgz`` for FastSurfer output) feeds the
+internally computed head mask and is harmonized (rescaled so the
+white-matter mask's median intensity is 1000, mirroring mriqc's own
+``Harmonize`` step) before EFC/FBER/SNR/background stats are computed from
+it. QI2 is computed by a local, pure-computation port of mriqc's
 ``art_qi2`` (see :func:`_computeQi2`), to avoid its unconditional SVG report
-output. Before EFC/FBER/SNR/background stats are computed, the reference
-image is harmonized (rescaled so the white-matter mask's median intensity is
-1000), mirroring mriqc's own ``Harmonize`` step; QI2 uses the
-merely-conformed (non-harmonized) image, matching mriqc's actual wiring.
+output.
+
+Unlike mriqc, which bias-corrects via its own two-pass ANTs
+``N4BiasFieldCorrection`` (SynthStrip-mask-guided, after percentile
+intensity clipping) before harmonizing, this module reuses whichever bias
+correction FreeSurfer/FastSurfer already applied to produce ``nu_image`` --
+a different algorithm/parameterization than mriqc's own, so absolute values
+computed here won't numerically match mriqc's, even though the same
+two-image-role split and harmonization target are reproduced.
 
 Implemented measures:
 - EFC              : Entropy Focus Criterion
@@ -17,12 +29,14 @@ Implemented measures:
 - FBER             : Foreground-Background Energy Ratio
 - SNR_HEAD         : Signal-to-Noise Ratio over the head mask (externally
                       supplied, or computed internally via Otsu
-                      thresholding reinforced by the aparc+aseg
-                      segmentation)
+                      thresholding of the bias-corrected reference image,
+                      reinforced by the aparc+aseg segmentation)
 - SNR_TISSUE_*     : Signal-to-Noise Ratio in the GM/WM/CSF tissue masks
                       derived from a FreeSurfer/FastSurfer segmentation
                       (``_gm``, ``_wm``, ``_csf``), and their mean
-                      (``_total``)
+                      (``_total``); GM includes subcortical structures, not
+                      just cortex, and WM includes (unedoded) cerebellar
+                      white matter alongside the eroded cerebral component
 - BG               : Background summary statistics
 """
 
@@ -32,10 +46,36 @@ import os
 # private helper functions and variables
 # -----------------------------------------------------------------------------
 
-# FreeSurferColorLUT label IDs used to build tissue masks for SNR estimation.
-# WM/GM lists match fsqc.checkSNR.checkSNR for consistency across the codebase.
-_WM_LABELS = [2, 41, 7, 46, 251, 252, 253, 254, 255, 77, 78, 79]
-_GM_LABELS = [3, 42]
+# FreeSurferColorLUT label IDs used to build tissue masks for SNR estimation
+# and harmonization. Unlike fsqc.checkSNR.checkSNR, GM here also includes
+# subcortical structures (FreeSurfer's own aseg.stats "SubCortGrayVol" set),
+# and WM's cerebellar component is split out into its own (unedoded)
+# constant -- see _WM_LABELS_CEREBELLUM below.
+
+# Left/Right-Cerebral-White-Matter, corpus callosum (CC_*), WM-hypointensities;
+# eroded by nb_erode_wm.
+_WM_LABELS = [2, 41, 251, 252, 253, 254, 255, 77, 78, 79]
+
+# Left/Right-Cerebellum-White-Matter; kept unedoded (never eroded), since it's
+# too thin to survive nb_erode_wm -- see checkSNR.py's own docstring for the
+# same reasoning applied to (unedoded) GM.
+_WM_LABELS_CEREBELLUM = [7, 46]
+
+# Cortex plus FreeSurfer's standard subcortical gray-matter structures
+# (matching aseg.stats' "SubCortGrayVol"); never eroded (nb_erode=0), for the
+# same thin-structure reason as _WM_LABELS_CEREBELLUM.
+_GM_LABELS = [
+    3, 42,    # Left/Right-Cerebral-Cortex
+    10, 49,   # Left/Right-Thalamus
+    11, 50,   # Left/Right-Caudate
+    12, 51,   # Left/Right-Putamen
+    13, 52,   # Left/Right-Pallidum
+    17, 53,   # Left/Right-Hippocampus
+    18, 54,   # Left/Right-Amygdala
+    26, 58,   # Left/Right-Accumbens-area
+    28, 60,   # Left/Right-VentralDC
+]
+
 _CSF_LABELS = [24, 4, 43, 5, 44, 14, 15]
 
 
@@ -390,6 +430,7 @@ def checkMotion(
     subjects_dir,
     subject,
     ref_image="orig.mgz",
+    nu_image="nu.mgz",
     output_dir=None,
     write_masks=False,
     rotmask_file=None,
@@ -405,18 +446,21 @@ def checkMotion(
     Compute MRIQC-style EFC, QI2, FBER, SNR and BG measures for a subject.
 
     All measures are computed on a single reference image grid, shared with
-    the subject's FreeSurfer/FastSurfer ``aseg``/``aparc`` segmentation
-    (``ref_image`` defaults to ``orig.mgz``, i.e. FreeSurfer's own conformed
-    volume, precisely so it lines up with ``aseg``/``aparc``). The resolved
-    image is conformed the way mriqc's anatomical workflow does (see
-    :func:`_conformImageToRAS`), then harmonized (see
-    :func:`_harmonizeImage`) by rescaling it so the eroded white-matter
-    mask's median intensity is 1000, mirroring mriqc's own ``Harmonize``
-    step. EFC, FBER, SNR and background stats are computed on the harmonized
-    image; QI2 is computed on the conformed-but-unharmonized image, matching
-    mriqc's actual wiring (its QI2 node is fed ``in_ras``, not
-    ``in_noinu``), via a local port of mriqc's QI2 computation (see
-    :func:`_computeQi2`).
+    the subject's FreeSurfer/FastSurfer ``aseg``/``aparc`` segmentation.
+    Two resolved images are used, mirroring mriqc's own ``in_ras``/
+    ``in_noinu`` split: ``ref_image`` (default ``orig.mgz``, FreeSurfer's
+    own conformed-but-uncorrected volume) is conformed the way mriqc's
+    anatomical workflow does (see :func:`_conformImageToRAS`) and used,
+    unmodified, for QI2 and the rotation mask; ``nu_image`` (default
+    ``nu.mgz``, FreeSurfer's own bias-field-corrected volume) is likewise
+    conformed and used for the internally computed head mask, then
+    harmonized (see :func:`_harmonizeImage`) by rescaling it so the eroded
+    white-matter mask's median intensity is 1000, mirroring mriqc's own
+    ``Harmonize`` step -- EFC, FBER, SNR and background stats are computed
+    on this harmonized image. QI2 is computed on ``ref_image`` alone
+    (conformed-but-unharmonized *and* not bias-corrected), matching mriqc's
+    actual wiring (its QI2 node is fed ``in_ras``, not ``in_noinu``), via a
+    local port of mriqc's QI2 computation (see :func:`_computeQi2`).
 
     Parameters
     ----------
@@ -429,6 +473,17 @@ def checkMotion(
         on the same grid as ``aseg_image``/``aparc_image`` -- overriding it
         with an image on a different grid will fail closed (NaN metrics)
         once the tissue-segmentation shape check fails.
+    nu_image : str, optional
+        Bias-field-corrected (but not yet intensity-harmonized) MRI volume
+        under ``mri/``, on the same grid as ``ref_image`` (default:
+        ``nu.mgz``; pass ``orig_nu.mgz`` for FastSurfer output). Feeds the
+        internally computed head mask and :func:`_harmonizeImage`,
+        mirroring the role mriqc's own N4-bias-corrected ``inu_corrected``
+        plays before its ``Harmonize`` step -- unlike mriqc, the bias
+        correction itself is not reimplemented here; whatever correction
+        FreeSurfer/FastSurfer applied to produce this file is reused as-is.
+        Required to be present and on the same grid as ``ref_image``; if
+        missing or mismatched, the motion metrics are returned as NaN.
     output_dir : str or None, optional
         Subject-specific metrics output folder to write debug mask images
         to (e.g. the caller's ``metrics_outdir``). Required for
@@ -436,15 +491,16 @@ def checkMotion(
     write_masks : bool, optional
         Debugging switch: if true and ``output_dir`` is given, save the
         intermediate images and masks used internally as NIfTI files under
-        ``output_dir`` -- the conformed reference image (``conformed``), the
+        ``output_dir`` -- the conformed reference image (``conformed``),
+        the conformed bias-corrected image (``nu_conformed``), the
         ``rotmask``, ``headmask``, ``airmask`` (whichever computed or
         externally supplied), a connected-components labeling of
         ``headmask`` (``headmask_components``, one label per connected
         component -- a fragmented, non-single-component head mask will show
         more than one label), the GM/WM/CSF tissue masks used for SNR
         (``gmmask``/``wmmask``/``csfmask``; ``wmmask`` is also the one used
-        for harmonization), and the harmonized reference image
-        (``harmonized``) (default: ``False``).
+        for harmonization), and the harmonized image (``harmonized``,
+        derived from ``nu_conformed``) (default: ``False``).
     rotmask_file : str or None, optional
         Full path to an externally supplied rotation mask (NIfTI), in the
         same (conformed) grid as the resolved ``ref_image``. If omitted, the
@@ -453,13 +509,13 @@ def checkMotion(
         reference image.
     headmask_file : str or None, optional
         Full path to an externally supplied head mask (NIfTI), in the same
-        (conformed) grid as the resolved ``ref_image``. If omitted, the
-        head mask is computed internally via :func:`_computeHeadmaskOtsu`
-        (Otsu thresholding of the conformed reference image, unioned with
-        the ``aparc+aseg`` segmentation, optionally dilated by
-        ``nb_dilate_headmask``, holes filled, and rotmask voxels excluded).
-        If explicitly given but unusable, the motion metrics are returned
-        as NaN.
+        (conformed) grid as the resolved ``ref_image``/``nu_image``. If
+        omitted, the head mask is computed internally via
+        :func:`_computeHeadmaskOtsu` (Otsu thresholding of the
+        bias-corrected ``nu_image``, unioned with the ``aparc+aseg``
+        segmentation, optionally dilated by ``nb_dilate_headmask``, holes
+        filled, and rotmask voxels excluded). If explicitly given but
+        unusable, the motion metrics are returned as NaN.
     airmask_file : str or None, optional
         Full path to an externally supplied air mask (NIfTI), in the same
         (conformed) grid as the resolved ``ref_image``, used for QI2, FBER,
@@ -481,8 +537,11 @@ def checkMotion(
         e.g. ``aparc.DKTatlas+aseg.deep.mgz`` for FastSurfer output).
         Required to be present and on the same grid as ``ref_image``.
     nb_erode_wm : int, optional
-        Erosion (in voxels) applied to the white matter mask used both for
-        SNR and for harmonization (default: 3).
+        Erosion (in voxels) applied to the cerebral white matter mask (plus
+        corpus callosum and WM-hypointensities) used both for SNR and for
+        harmonization (default: 3). Does *not* apply to cerebellar white
+        matter, which is unioned in unedoded (too thin to survive this
+        erosion) -- see :data:`_WM_LABELS_CEREBELLUM`.
     nb_erode_csf : int, optional
         Erosion (in voxels) applied to the CSF SNR mask (default: 1).
     nb_dilate_headmask : int or None, optional
@@ -552,6 +611,35 @@ def checkMotion(
     if write_masks and output_dir is not None:
         _save_nii(img_ras, ref_img.affine, os.path.join(output_dir, "conformed.nii.gz"), dtype="float32")
 
+    # bias-field-corrected (but not yet intensity-harmonized) volume, on the
+    # same grid as ref_image -- stands in for mriqc's inu_corrected, feeding
+    # the internal headmask computation and _harmonizeImage below; qi2 and
+    # the rotmask stay on the uncorrected img_ras, matching mriqc's in_ras
+    # role. Bail out with NaNs if it doesn't exist or doesn't match img_ras's
+    # grid, same fail-closed policy as the aseg/aparc segmentation below.
+    nu_path = os.path.join(subjects_dir, subject, "mri", nu_image)
+    if not os.path.exists(nu_path):
+        warnings.warn(
+            "WARNING: could not find bias-corrected image " + nu_path
+            + " for " + subject + ", returning NaNs.",
+            stacklevel=2,
+        )
+        return _nan_metrics_dict()
+
+    nu_img = _conformImageToRAS(nu_path)
+    img_nu = nu_img.get_fdata()
+    if img_nu.shape[:3] != img_ras.shape[:3]:
+        warnings.warn(
+            "WARNING: bias-corrected image " + nu_path + " has shape "
+            + str(img_nu.shape[:3]) + ", expected " + str(img_ras.shape[:3])
+            + " for " + subject + ", returning NaNs.",
+            stacklevel=2,
+        )
+        return _nan_metrics_dict()
+
+    if write_masks and output_dir is not None:
+        _save_nii(img_nu, nu_img.affine, os.path.join(output_dir, "nu_conformed.nii.gz"), dtype="float32")
+
     # aseg/aparc segmentation, on the same grid as ref_image, required for
     # tissue masks, harmonization, and (when headmask_file is not given)
     # internal headmask computation. aseg/aparc live in FreeSurfer's native
@@ -607,7 +695,7 @@ def checkMotion(
             return _nan_metrics_dict()
     else:
         headmask = _computeHeadmaskOtsu(
-            img_ras, aparc_data, rotmask=rotmask, nb_dilate=nb_dilate_headmask
+            img_nu, aparc_data, rotmask=rotmask, nb_dilate=nb_dilate_headmask
         )
 
     # airmask: externally supplied, or computed internally as the
@@ -640,7 +728,9 @@ def checkMotion(
         )
 
     gm_mask = _tissue_mask_from_labels(aseg_data, _GM_LABELS, nb_erode=0)
-    wm_mask = _tissue_mask_from_labels(aparc_data, _WM_LABELS, nb_erode=nb_erode_wm)
+    wm_mask_cerebrum = _tissue_mask_from_labels(aparc_data, _WM_LABELS, nb_erode=nb_erode_wm)
+    wm_mask_cerebellum = _tissue_mask_from_labels(aparc_data, _WM_LABELS_CEREBELLUM, nb_erode=0)
+    wm_mask = wm_mask_cerebrum | wm_mask_cerebellum
     csf_mask = _tissue_mask_from_labels(aseg_data, _CSF_LABELS, nb_erode=nb_erode_csf)
 
     if write_masks and output_dir is not None:
@@ -650,7 +740,7 @@ def checkMotion(
 
     # harmonize: rescale so the white-matter mask's median intensity is
     # 1000, mirroring mriqc's in_noinu
-    img_harmonized = _harmonizeImage(img_ras, wm_mask)
+    img_harmonized = _harmonizeImage(img_nu, wm_mask)
     if img_harmonized is None:
         warnings.warn(
             "WARNING: could not harmonize reference image for " + subject
