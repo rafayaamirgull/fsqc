@@ -19,7 +19,6 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
- # docutils: disable=indentation,line-too-long
 """
 This module provides MRIQC-style image quality metrics related to motion/noise.
 
@@ -27,14 +26,18 @@ Metrics (EFC, FBER, SNR, background summary stats) are computed via
 ``mriqc.qc.anatomical``, on a single unified image grid shared with the
 subject's FreeSurfer/FastSurfer ``aseg``/``aparc`` segmentation. Two
 reference volumes are used, mirroring mriqc's own ``in_ras``/``in_noinu``
-split: the merely-conformed ``ref_image`` (``orig.mgz`` by default) feeds
-QI2 and the rotation mask, while the bias-field-corrected ``nu_image``
-(``nu.mgz`` by default; ``orig_nu.mgz`` for FastSurfer output) feeds the
-internally computed head mask and is harmonized (rescaled so the white-matter
-mask's median intensity is 1000, mirroring mriqc's own ``Harmonize`` step)
-before EFC/FBER/SNR/background stats are computed from it. QI2 is computed by
-a local, pure-computation port of mriqc's ``art_qi2`` (see :func:`_computeQi2`),
-to avoid its unconditional SVG report output.
+split:
+
+- the merely-conformed ``ref_image`` (``orig.mgz`` by default) feeds QI2 and
+  the rotation mask
+- the bias-field-corrected ``nu_image`` (``nu.mgz`` by default;
+  ``orig_nu.mgz`` for FastSurfer output) feeds the internally computed head
+  mask and is harmonized (rescaled so the white-matter mask's median
+  intensity is 1000, mirroring mriqc's own ``Harmonize`` step) before
+  EFC/FBER/SNR/background stats are computed from it
+
+QI2 is computed by a local, pure-computation port of mriqc's ``art_qi2`` 
+(see :func:`_computeQi2`), to avoid its unconditional SVG report output.
 
 Unlike mriqc, which bias-corrects via its own two-pass ANTs
 ``N4BiasFieldCorrection`` (SynthStrip-mask-guided, after percentile
@@ -45,6 +48,7 @@ computed here won't numerically match mriqc's, even though the same
 two-image-role split and harmonization target are reproduced.
 
 Implemented measures:
+
 - EFC              : Entropy Focus Criterion
 - QI2              : Mortamet's quality index 2
 - FBER             : Foreground-Background Energy Ratio
@@ -59,7 +63,6 @@ Implemented measures:
                       just cortex, and WM includes (uneroded) cerebellar
                       white matter alongside the eroded cerebral component
 - BG               : Background summary statistics
-
 """
 
 import os
