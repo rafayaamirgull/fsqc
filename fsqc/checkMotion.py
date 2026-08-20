@@ -19,6 +19,7 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
+ # docutils: disable=indentation,line-too-long
 """
 This module provides MRIQC-style image quality metrics related to motion/noise.
 
@@ -251,7 +252,7 @@ def _computeRotmaskMortamet(img, min_size=500):
         Binary rotation mask (uint8, 1 = detected hard-zero artifact region).
     """
     import numpy as np
-    from scipy import ndimage as nd
+    from scipy import ndimage as ndimg
 
     mask = img <= 0
 
@@ -260,12 +261,12 @@ def _computeRotmaskMortamet(img, min_size=500):
     # them from small interior zero specks during the labeling step below.
     mask = np.pad(mask, pad_width=(1,), mode="constant", constant_values=1)
 
-    struct = nd.generate_binary_structure(3, 2)
-    mask = nd.binary_opening(mask, structure=struct).astype(np.uint8)
+    struct = ndimg.generate_binary_structure(3, 2)
+    mask = ndimg.binary_opening(mask, structure=struct).astype(np.uint8)
 
-    label_im, nb_labels = nd.label(mask)
+    label_im, nb_labels = ndimg.label(mask)
     if nb_labels > 2:
-        sizes = nd.sum(mask, label_im, list(range(nb_labels + 1)))
+        sizes = ndimg.sum(mask, label_im, list(range(nb_labels + 1)))
         ordered = sorted(zip(sizes, list(range(nb_labels + 1)), strict=True), reverse=True)
         for _, label in ordered[2:]:
             mask[label_im == label] = 0
@@ -321,7 +322,7 @@ def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=10):
         Binary head mask (uint8, 1 = head).
     """
     import numpy as np
-    from scipy import ndimage as nd
+    from scipy import ndimage as ndimg
     from skimage.filters import threshold_otsu
     from skimage.morphology import binary_dilation
 
@@ -333,7 +334,7 @@ def _computeHeadmaskOtsu(img, seg_data, rotmask=None, nb_dilate=10):
     if nb_dilate:
         headmask = binary_dilation(headmask, np.ones((nb_dilate, nb_dilate, nb_dilate)))
 
-    headmask = nd.binary_fill_holes(headmask).astype(np.uint8)
+    headmask = ndimg.binary_fill_holes(headmask).astype(np.uint8)
 
     if rotmask is not None:
         headmask[rotmask > 0] = 0
@@ -587,7 +588,7 @@ def checkMotion(
     import warnings
 
     import numpy as np
-    from scipy import ndimage as nd
+    from scipy import ndimage as ndimg
 
     # mriqc pulls in nipype/niworkflows, which are known to attach their own
     # handler(s) to the root logger as a side effect of import -- undoing
@@ -757,7 +758,7 @@ def checkMotion(
 
         # debug: label each connected component of headmask individually,
         # so a fragmented (non-single-component) head mask is visible
-        headmask_components, _ = nd.label(headmask)
+        headmask_components, _ = ndimg.label(headmask)
         _save_nii(
             headmask_components, ref_img.affine,
             os.path.join(output_dir, "headmask_components.nii.gz"), dtype="int32",
