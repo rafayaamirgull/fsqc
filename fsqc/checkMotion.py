@@ -587,8 +587,22 @@ def checkMotion(
     import warnings
 
     import numpy as np
-    from mriqc.qc.anatomical import efc, fber, snr, summary_stats
     from scipy import ndimage as nd
+
+    # mriqc pulls in nipype/niworkflows, which are known to attach their own
+    # handler(s) to the root logger as a side effect of import -- undoing
+    # fsqc's own _start_logging() setup and causing every subsequent
+    # logging.info/error() call in the process to print twice. Snapshot the
+    # root logger's handlers before the import and strip anything it added,
+    # so fsqc's own logging configuration is left untouched. Cheap to redo on
+    # every call: after the first import, Python's module cache makes this a
+    # no-op re-import, so no handlers get added and the loop below is empty.
+    _root_logger = logging.getLogger()
+    _handlers_before_mriqc = list(_root_logger.handlers)
+    from mriqc.qc.anatomical import efc, fber, snr, summary_stats
+    for _extra_handler in list(_root_logger.handlers):
+        if _extra_handler not in _handlers_before_mriqc:
+            _root_logger.removeHandler(_extra_handler)
 
     def _nan_metrics_dict():
         return {

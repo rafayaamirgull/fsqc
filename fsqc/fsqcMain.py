@@ -3667,7 +3667,9 @@ def _start_logging(argsDict):
 
     #
     logfile = os.path.join(argsDict["output_dir"], "logfile.txt")
-    logging.getLogger().addHandler(logging.FileHandler(filename=logfile, mode="w"))
+    logfile_handler = logging.FileHandler(filename=logfile, mode="w")
+    logfile_handler.setFormatter(logging.Formatter(logfile_format))
+    logging.getLogger().addHandler(logfile_handler)
 
     # initial messages
     logging.info("Starting logging for fsqctools ...")
