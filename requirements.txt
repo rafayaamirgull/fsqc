@@ -5,7 +5,7 @@ nibabel
 numpy
 pandas
 scipy
-mriqc
+mriqc>=24.0.0
 scikit-image
 scikit-learn
 transforms3d
