@@ -32,19 +32,19 @@ con_rh_snr     |   wm/gm contrast signal-to-noise ratio in the right hemisphere
 rot_tal_x      |   rotation component of the Talairach transform around the x axis
 rot_tal_y      |   rotation component of the Talairach transform around the y axis
 rot_tal_z      |   rotation component of the Talairach transform around the z axis
-efc              |   MRIQC-style entropy focus criterion (harmonized orig.mgz)
+efc              |   MRIQC-style entropy focus criterion (harmonized nu_image)
 qi2              |   MRIQC-style Mortamet quality index 2 (conformed orig.mgz)
-fber             |   MRIQC-style foreground-background energy ratio (harmonized orig.mgz)
-snr_tissue_total |   MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)
-snr_head         |   MRIQC-style signal-to-noise ratio over the head mask (harmonized orig.mgz)
-bg_mean          |   mean background intensity (harmonized orig.mgz)
-bg_median        |   median background intensity (harmonized orig.mgz)
-bg_std           |   standard deviation of background intensity (harmonized orig.mgz)
-bg_mad           |   median absolute deviation of background intensity (harmonized orig.mgz)
-bg_kurtosis      |   kurtosis of background intensity (harmonized orig.mgz)
-bg_p05           |   5th percentile of background intensity (harmonized orig.mgz)
-bg_p95           |   95th percentile of background intensity (harmonized orig.mgz)
-bg_n             |   number of background voxels (harmonized orig.mgz)
+fber             |   MRIQC-style foreground-background energy ratio (harmonized nu_image)
+snr_tissue_total |   MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized nu_image)
+snr_head         |   MRIQC-style signal-to-noise ratio over the head mask (harmonized nu_image)
+bg_mean          |   mean background intensity (harmonized nu_image)
+bg_median        |   median background intensity (harmonized nu_image)
+bg_std           |   standard deviation of background intensity (harmonized nu_image)
+bg_mad           |   median absolute deviation of background intensity (harmonized nu_image)
+bg_kurtosis      |   kurtosis of background intensity (harmonized nu_image)
+bg_p05           |   5th percentile of background intensity (harmonized nu_image)
+bg_p95           |   95th percentile of background intensity (harmonized nu_image)
+bg_n             |   number of background voxels (harmonized nu_image)
 
 Note: the `efc`, `qi2`, `fber`, `snr_tissue_total`, `snr_head`, and `bg_*` metrics
 are adapted from the [MRIQC toolbox](https://github.com/poldracklab/mriqc)'s QC
