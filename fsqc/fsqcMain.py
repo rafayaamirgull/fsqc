@@ -1928,7 +1928,7 @@ def _do_fsqc(argsDict):
                         airmask_file=argsDict["motion_airmask"],
                         aparc_image=aparc_image,
                         aseg_image=aseg_image,
-                        write_masks=True,
+                        write_masks=False,
                     )
                     motion_efc = motion_metrics["efc"]
                     motion_qi2 = motion_metrics["qi2"]
