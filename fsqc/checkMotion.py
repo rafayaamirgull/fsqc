@@ -419,7 +419,7 @@ def _computeQi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_ele
     from sklearn.neighbors import KernelDensity
 
     # S. Ogawa was born
-    np.random.seed(1191935)
+    _rng = np.random.RandomState(1191935)
 
     data = np.nan_to_num(img[airmask > 0], posinf=0.0)
     data[data < 0] = 0
@@ -428,7 +428,7 @@ def _computeQi2(img, airmask, min_voxels=int(1e3), max_voxels=int(3e5), coil_ele
         return 0.0
 
     data *= 100 / np.percentile(data, 99)
-    modelx = data if len(data) < max_voxels else np.random.choice(data, size=max_voxels)
+    modelx = data if len(data) < max_voxels else _rng.choice(data, size=max_voxels)
 
     x_grid = np.linspace(0.0, 110, 1000)
 
