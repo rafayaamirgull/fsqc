@@ -238,6 +238,7 @@ run_fsqc --subjects_dir <directory> --output_dir <directory>
     [--subjects SubjectID [SubjectID ...]]
     [--subjects-file <file>] [--screenshots]
     [--screenshots-html] [--surfaces] [--surfaces-html]
+    [--surfaces_views <view> [<view> ...]]
     [--skullstrip] [--skullstrip-html]
     [--fornix] [--fornix-html] [--hippocampus]
     [--hippocampus-html] [--hippocampus-label ... ]
@@ -265,6 +266,9 @@ optional arguments:
   --surfaces             create screenshots of individual brain surfaces
   --surfaces-html        create screenshots of individual brain surfaces
                          and html summary page
+  --surfaces_views       camera views for surface images. Choose from:
+                         anterior, posterior, left, right, superior,
+                         inferior. Default: left, right, superior, inferior
   --skullstrip           create screenshots of individual brainmasks
   --skullstrip-html      create screenshots of individual brainmasks and
                          html summary page
@@ -278,7 +282,7 @@ optional arguments:
   --hippocampus-html     check segmentation of hippocampus and amygdala
                          and create html summary page
   --hippocampus-label    specify label for hippocampus segmentation files
-                         (default: T1.v21). The full filename is then
+                         (default: None). The full filename is then
                          [lr]h.hippoAmygLabels-<LABEL>.FSvoxelSpace.mgz
   --shape                run shape analysis
   --outlier              run outlier detection
@@ -335,6 +339,32 @@ expert options:
                         does not matter. Default views are x=-10 x=10 y=0 z=0.
   --screenshots_layout <rows> <columns>
                         layout matrix for screenshot images.
+  --rotmask <filename>
+                        full path to an externally computed rotation mask (NIfTI
+                        or FreeSurfer MGH/MGZ) to use for the motion/noise
+                        metrics, in the same grid as orig.mgz. Must be a full
+                        path; it is not assumed to be located within the
+                        subject's mri subfolder. If omitted, a rotmask is
+                        computed internally. If given but the file cannot be
+                        found, loaded, or does not match orig.mgz's shape, the
+                        motion metrics are returned as NaN for that subject.
+  --headmask <filename>
+                        full path to an externally computed head mask (NIfTI or
+                        FreeSurfer MGH/MGZ) to use for the motion/noise metrics,
+                        in the same grid as orig.mgz. Must be a full path; it is
+                        not assumed to be located within the subject's mri
+                        subfolder. If omitted, a head mask is computed
+                        internally. If given but the file cannot be found,
+                        loaded, or does not match orig.mgz's shape, the motion
+                        metrics are returned as NaN for that subject.
+  --airmask <filename>
+                        full path to an externally computed air mask (NIfTI or
+                        FreeSurfer MGH/MGZ) to use for the motion/noise metrics,
+                        in the same grid as orig.mgz. Must be a full path; it is
+                        not assumed to be located within the subject's mri
+                        subfolder. If omitted, an air mask is computed
+                        internally. Fails the same way as --headmask if given
+                        but unusable.
 
 ```
 
@@ -417,7 +447,7 @@ And as a more elaborate example:
 
 ```python
 import fsqc
-fsqc.run_fsqc(subjects_dir='/my/subjects/dir', output_dir='/my/output/dir', subject_file='/my/subjects/file.txt', screenshots_html=True, surfaces_html=True, skullstrip_html=True, fornix_html=True, hypothalamus_html=True, hippocampus_html=True, hippocampus_label="T1.v21", shape=True, outlier=True)
+fsqc.run_fsqc(subjects_dir='/my/subjects/dir', output_dir='/my/output/dir', subjects_file='/my/subjects/file.txt', screenshots_html=True, surfaces_html=True, skullstrip_html=True, fornix_html=True, hypothalamus_html=True, hippocampus_html=True, hippocampus_label="T1.v21", shape=True, outlier=True)
 ```
 
 

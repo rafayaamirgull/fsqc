@@ -44,3 +44,7 @@ sdist/
 var/
 wheels/
 MANIFEST
+
+# other
+notebooks
+chats

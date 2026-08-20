@@ -209,6 +209,7 @@ def get_help(print_help=True, return_help=False):
                                   [--subjects-file <file>]
                                   [--screenshots] [--screenshots-html]
                                   [--surfaces] [--surfaces-html]
+                                  [--surfaces_views <view> [<view> ...]]
                                   [--skullstrip] [--skullstrip-html]
                                   [--fornix] [--fornix-html] [--hypothalamus]
                                   [--hypothalamus-html] [--hippocampus]
@@ -235,6 +236,10 @@ def get_help(print_help=True, return_help=False):
           --surfaces            create screenshots of individual brain surfaces
           --surfaces-html       create screenshots of individual brain surfaces
                                 and html summary page
+          --surfaces_views      camera views for surface images. Choose from:
+                                anterior, posterior, left, right, superior,
+                                inferior. default: left, right, superior,
+                                inferior
           --skullstrip          create screenshots of individual brainmasks
           --skullstrip-html     create screenshots of individual brainmasks and
                                 html summary page
@@ -308,6 +313,34 @@ def get_help(print_help=True, return_help=False):
                                 are x=-10 x=10 y=0 z=0.
           --screenshots_layout <rows> <columns>
                                 layout matrix for screenshot images
+          --rotmask <filename>
+                                full path to an externally computed rotation mask
+                                (NIfTI or FreeSurfer MGH/MGZ) to use for the
+                                motion/noise metrics, in the same grid as orig.mgz.
+                                Must be a full path; it is not assumed to be
+                                located within the subject's mri subfolder. If
+                                omitted, a rotmask is computed internally. If given
+                                but the file cannot be found, loaded, or does not
+                                match orig.mgz's shape, the motion metrics are
+                                returned as NaN for that subject.
+          --headmask <filename>
+                                full path to an externally computed head mask
+                                (NIfTI or FreeSurfer MGH/MGZ) to use for the
+                                motion/noise metrics, in the same grid as orig.mgz.
+                                Must be a full path; it is not assumed to be
+                                located within the subject's mri subfolder. If
+                                omitted, a head mask is computed internally. If
+                                given but the file cannot be found, loaded, or does
+                                not match orig.mgz's shape, the motion metrics are
+                                returned as NaN for that subject.
+          --airmask <filename>
+                                full path to an externally computed air mask
+                                (NIfTI or FreeSurfer MGH/MGZ) to use for the
+                                motion/noise metrics, in the same grid as orig.mgz.
+                                Must be a full path; it is not assumed to be
+                                located within the subject's mri subfolder. If
+                                omitted, an air mask is computed internally. Fails
+                                the same way as --headmask if given but unusable.
 
 
     ========================
@@ -458,7 +491,7 @@ def _parse_arguments():
     required.add_argument(
         "--subjects_dir",
         dest="subjects_dir",
-        help="subjects directory with a set of Freesurfer processed individual datasets.",
+        help="subjects directory with a set of Freesurfer- or Fastsurfer-processed individual datasets.",
         metavar="<directory>",
         required=True,
     )
@@ -722,7 +755,8 @@ def _parse_arguments():
     expert.add_argument(
         "--rotmask",
         dest="motion_rotmask",
-        help="full path to an externally computed rotation mask (NIfTI) to use "
+        help="full path to an externally computed rotation mask (NIfTI or "
+        "FreeSurfer MGH/MGZ) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
         "subfolder. If omitted, a rotmask is computed internally. If given but "
@@ -735,7 +769,8 @@ def _parse_arguments():
     expert.add_argument(
         "--headmask",
         dest="motion_headmask",
-        help="full path to an externally computed head mask (NIfTI) to use "
+        help="full path to an externally computed head mask (NIfTI or "
+        "FreeSurfer MGH/MGZ) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
         "subfolder. If omitted, a head mask is computed internally. If given "
@@ -748,7 +783,8 @@ def _parse_arguments():
     expert.add_argument(
         "--airmask",
         dest="motion_airmask",
-        help="full path to an externally computed air mask (NIfTI) to use "
+        help="full path to an externally computed air mask (NIfTI or "
+        "FreeSurfer MGH/MGZ) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
         "subfolder. If omitted, an air mask is computed internally. Fails the "
@@ -3820,23 +3856,23 @@ def run_fsqc(
         Skip processing for a given case if output already exists, even with
         possibly different parameters or settings.
     motion_rotmask : str, default: None
-        Full path to an externally computed rotation mask (NIfTI) to use for
-        the motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. If omitted, a rotmask is
-        computed internally; if given but unusable, motion metrics are
-        returned as NaN for that subject.
+        Full path to an externally computed rotation mask (NIfTI or
+        FreeSurfer MGH/MGZ) to use for the motion/noise metrics, in the same
+        grid as orig.mgz. Not assumed to live under the subject's mri
+        subfolder. If omitted, a rotmask is computed internally; if given
+        but unusable, motion metrics are returned as NaN for that subject.
     motion_headmask : str, default: None
-        Full path to an externally computed head mask (NIfTI) to use for the
-        motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. If omitted, a head mask is
-        computed internally; if given but unusable, motion metrics are
-        returned as NaN for that subject.
+        Full path to an externally computed head mask (NIfTI or FreeSurfer
+        MGH/MGZ) to use for the motion/noise metrics, in the same grid as
+        orig.mgz. Not assumed to live under the subject's mri subfolder. If
+        omitted, a head mask is computed internally; if given but unusable,
+        motion metrics are returned as NaN for that subject.
     motion_airmask : str, default: None
-        Full path to an externally computed air mask (NIfTI) to use for the
-        motion/noise metrics, in the same grid as orig.mgz. Not assumed to
-        live under the subject's mri subfolder. If omitted, an air mask is
-        computed internally; fails the same way as motion_headmask if given
-        but unusable.
+        Full path to an externally computed air mask (NIfTI or FreeSurfer
+        MGH/MGZ) to use for the motion/noise metrics, in the same grid as
+        orig.mgz. Not assumed to live under the subject's mri subfolder. If
+        omitted, an air mask is computed internally; fails the same way as
+        motion_headmask if given but unusable.
     logfile : str, default: None
         Specify a custom location for the logfile. Default location is the
         output directory.

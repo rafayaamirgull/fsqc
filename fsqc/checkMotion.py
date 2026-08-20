@@ -523,23 +523,24 @@ def checkMotion(
         for harmonization), and the harmonized image (``harmonized``,
         derived from ``nu_conformed``) (default: ``False``).
     rotmask_file : str or None, optional
-        Full path to an externally supplied rotation mask (NIfTI), in the
-        same (conformed) grid as the resolved ``ref_image``. If omitted, the
-        rotmask is computed internally via :func:`_computeRotmaskMortamet`
-        (mriqc's Mortamet2009 hard-zero detection) directly on the conformed
-        reference image.
+        Full path to an externally supplied rotation mask (NIfTI or
+        FreeSurfer MGH/MGZ), in the same (conformed) grid as the resolved
+        ``ref_image``. If omitted, the rotmask is computed internally via
+        :func:`_computeRotmaskMortamet` (mriqc's Mortamet2009 hard-zero
+        detection) directly on the conformed reference image.
     headmask_file : str or None, optional
-        Full path to an externally supplied head mask (NIfTI), in the same
-        (conformed) grid as the resolved ``ref_image``/``nu_image``. If
-        omitted, the head mask is computed internally via
-        :func:`_computeHeadmaskOtsu` (Otsu thresholding of the
-        bias-corrected ``nu_image``, unioned with the ``aparc+aseg``
+        Full path to an externally supplied head mask (NIfTI or FreeSurfer
+        MGH/MGZ), in the same (conformed) grid as the resolved
+        ``ref_image``/``nu_image``. If omitted, the head mask is computed
+        internally via :func:`_computeHeadmaskOtsu` (Otsu thresholding of
+        the bias-corrected ``nu_image``, unioned with the ``aparc+aseg``
         segmentation, optionally dilated by ``nb_dilate_headmask``, holes
         filled, and rotmask voxels excluded). If explicitly given but
         unusable, the motion metrics are returned as NaN.
     airmask_file : str or None, optional
-        Full path to an externally supplied air mask (NIfTI), in the same
-        (conformed) grid as the resolved ``ref_image``, used for QI2, FBER,
+        Full path to an externally supplied air mask (NIfTI or FreeSurfer
+        MGH/MGZ), in the same (conformed) grid as the resolved
+        ``ref_image``, used for QI2, FBER,
         and the background statistics. If omitted, the air mask is computed
         internally via :func:`_computeAirmask` -- currently the complement
         of ``headmask`` (see ``headmask_file``) with rotmask voxels also
