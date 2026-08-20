@@ -1,3 +1,24 @@
+# STATEMENT OF CHANGES: This file is derived from sources licensed under the
+# Apache-2.0 terms, and this file has been changed.
+# The original file this work derives from is found at:
+# https://github.com/nipreps/mriqc/blob/master/mriqc/qc/anatomical.py
+#
+# ORIGINAL WORK'S ATTRIBUTION NOTICE:
+#
+#     Copyright 2021 The NiPreps Developers <nipreps@gmail.com>
+#
+#     Licensed under the Apache License, Version 2.0 (the "License");
+#     you may not use this file except in compliance with the License.
+#     You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
+
 """
 This module provides MRIQC-style image quality metrics related to motion/noise.
 
@@ -35,9 +56,10 @@ Implemented measures:
                       derived from a FreeSurfer/FastSurfer segmentation
                       (``_gm``, ``_wm``, ``_csf``), and their mean
                       (``_total``); GM includes subcortical structures, not
-                      just cortex, and WM includes (unedoded) cerebellar
+                      just cortex, and WM includes (uneroded) cerebellar
                       white matter alongside the eroded cerebral component
 - BG               : Background summary statistics
+
 """
 
 import os

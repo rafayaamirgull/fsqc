@@ -91,22 +91,19 @@ def get_help(print_help=True, return_help=False):
     - rot_tal_x     ...  rotation component of the Talairach transform around the x axis
     - rot_tal_y     ...  rotation component of the Talairach transform around the y axis
     - rot_tal_z     ...  rotation component of the Talairach transform around the z axis
-    - motion_efc             ...  MRIQC-style entropy focus criterion (harmonized orig.mgz)
-    - motion_qi2             ...  MRIQC-style Mortamet quality index 2 (conformed orig.mgz)
-    - motion_fber            ...  MRIQC-style foreground-background energy ratio (harmonized orig.mgz)
-    - motion_snr_tissue_gm    ...  MRIQC-style signal-to-noise ratio in the gray matter mask (harmonized orig.mgz)
-    - motion_snr_tissue_wm    ...  MRIQC-style signal-to-noise ratio in the white matter mask (harmonized orig.mgz)
-    - motion_snr_tissue_csf   ...  MRIQC-style signal-to-noise ratio in the CSF mask (harmonized orig.mgz)
-    - motion_snr_tissue_total ...  MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)
-    - motion_snr_head        ...  MRIQC-style signal-to-noise ratio over the externally supplied head mask (harmonized orig.mgz)
-    - motion_bg_mean     ...  mean background intensity (harmonized orig.mgz)
-    - motion_bg_median   ...  median background intensity (harmonized orig.mgz)
-    - motion_bg_std      ...  standard deviation of background intensity (harmonized orig.mgz)
-    - motion_bg_mad      ...  median absolute deviation of background intensity (harmonized orig.mgz)
-    - motion_bg_kurtosis ...  kurtosis of background intensity (harmonized orig.mgz)
-    - motion_bg_p05      ...  5th percentile of background intensity (harmonized orig.mgz)
-    - motion_bg_p95      ...  95th percentile of background intensity (harmonized orig.mgz)
-    - motion_bg_n        ...  number of background voxels (harmonized orig.mgz)
+    - efc             ...  MRIQC-style entropy focus criterion (harmonized orig.mgz)
+    - qi2             ...  MRIQC-style Mortamet quality index 2 (conformed orig.mgz)
+    - fber            ...  MRIQC-style foreground-background energy ratio (harmonized orig.mgz)
+    - snr_tissue_total ...  MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)
+    - snr_head        ...  MRIQC-style signal-to-noise ratio over the externally supplied head mask (harmonized orig.mgz)
+    - bg_mean     ...  mean background intensity (harmonized orig.mgz)
+    - bg_median   ...  median background intensity (harmonized orig.mgz)
+    - bg_std      ...  standard deviation of background intensity (harmonized orig.mgz)
+    - bg_mad      ...  median absolute deviation of background intensity (harmonized orig.mgz)
+    - bg_kurtosis ...  kurtosis of background intensity (harmonized orig.mgz)
+    - bg_p05      ...  5th percentile of background intensity (harmonized orig.mgz)
+    - bg_p95      ...  95th percentile of background intensity (harmonized orig.mgz)
+    - bg_n        ...  number of background voxels (harmonized orig.mgz)
 
     The program will use an existing output directory (or try to create it) and
     write a csv table into that location. The csv table will contain the above
@@ -1901,9 +1898,6 @@ def _do_fsqc(argsDict):
                     motion_qi2 = motion_metrics["qi2"]
                     motion_fber = motion_metrics["fber"]
                     motion_snr_tissue_total = motion_metrics["snr_tissue_total"]
-                    motion_snr_tissue_gm = motion_metrics["snr_tissue_gm"]
-                    motion_snr_tissue_wm = motion_metrics["snr_tissue_wm"]
-                    motion_snr_tissue_csf = motion_metrics["snr_tissue_csf"]
                     motion_snr_head = motion_metrics["snr_head"]
                     motion_bg_mean = motion_metrics["bg_mean"]
                     motion_bg_median = motion_metrics["bg_median"]
@@ -1920,9 +1914,6 @@ def _do_fsqc(argsDict):
                     motion_qi2 = np.nan
                     motion_fber = np.nan
                     motion_snr_tissue_total = np.nan
-                    motion_snr_tissue_gm = np.nan
-                    motion_snr_tissue_wm = np.nan
-                    motion_snr_tissue_csf = np.nan
                     motion_snr_head = np.nan
                     motion_bg_mean = np.nan
                     motion_bg_median = np.nan
@@ -1955,22 +1946,19 @@ def _do_fsqc(argsDict):
                         "rot_tal_x": rot_tal_x,
                         "rot_tal_y": rot_tal_y,
                         "rot_tal_z": rot_tal_z,
-                        "motion_efc" : motion_efc,
-                        "motion_qi2" : motion_qi2,
-                        "motion_fber" : motion_fber,
-                        "motion_snr_tissue_total" : motion_snr_tissue_total,
-                        "motion_snr_tissue_gm" : motion_snr_tissue_gm,
-                        "motion_snr_tissue_wm" : motion_snr_tissue_wm,
-                        "motion_snr_tissue_csf" : motion_snr_tissue_csf,
-                        "motion_snr_head" : motion_snr_head,
-                        "motion_bg_mean" : motion_bg_mean,
-                        "motion_bg_median" : motion_bg_median,
-                        "motion_bg_std" : motion_bg_std,
-                        "motion_bg_mad" : motion_bg_mad,
-                        "motion_bg_kurtosis" : motion_bg_kurtosis,
-                        "motion_bg_p05" : motion_bg_p05,
-                        "motion_bg_p95" : motion_bg_p95,
-                        "motion_bg_n" : motion_bg_n,                        
+                        "efc" : motion_efc,
+                        "qi2" : motion_qi2,
+                        "fber" : motion_fber,
+                        "snr_tissue_total" : motion_snr_tissue_total,
+                        "snr_head" : motion_snr_head,
+                        "bg_mean" : motion_bg_mean,
+                        "bg_median" : motion_bg_median,
+                        "bg_std" : motion_bg_std,
+                        "bg_mad" : motion_bg_mad,
+                        "bg_kurtosis" : motion_bg_kurtosis,
+                        "bg_p05" : motion_bg_p05,
+                        "bg_p95" : motion_bg_p95,
+                        "bg_n" : motion_bg_n,
                     }
                 )
 
@@ -2999,22 +2987,19 @@ def _do_fsqc(argsDict):
                 "rot_tal_x",
                 "rot_tal_y",
                 "rot_tal_z",
-                "motion_efc",
-                "motion_qi2",
-                "motion_fber",
-                "motion_snr_tissue_total",
-                "motion_snr_tissue_gm",
-                "motion_snr_tissue_wm",
-                "motion_snr_tissue_csf",
-                "motion_snr_head",
-                "motion_bg_mean",
-                "motion_bg_median",
-                "motion_bg_std",
-                "motion_bg_mad",
-                "motion_bg_kurtosis",
-                "motion_bg_p05",
-                "motion_bg_p95",
-                "motion_bg_n",
+                "efc",
+                "qi2",
+                "fber",
+                "snr_tissue_total",
+                "snr_head",
+                "bg_mean",
+                "bg_median",
+                "bg_std",
+                "bg_mad",
+                "bg_kurtosis",
+                "bg_p05",
+                "bg_p95",
+                "bg_n",
             ]
         )
 

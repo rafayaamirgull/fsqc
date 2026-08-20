@@ -3,43 +3,71 @@ Functionality
 
 The core functionality of this toolbox is to compute the following features:
 
-+------------+-----------------------------------------------------------------+
-| Variable   | Description                                                     |
-+============+=================================================================+
-| subject    | Subject ID                                                      |
-+------------+-----------------------------------------------------------------+
-| wm_snr_orig| Signal-to-noise ratio for white matter in orig.mgz              |
-+------------+-----------------------------------------------------------------+
-| gm_snr_orig| Signal-to-noise ratio for gray matter in orig.mgz               |
-+------------+-----------------------------------------------------------------+
-| wm_snr_norm| Signal-to-noise ratio for white matter in norm.mgz              |
-+------------+-----------------------------------------------------------------+
-| gm_snr_norm| Signal-to-noise ratio for gray matter in norm.mgz               |
-+------------+-----------------------------------------------------------------+
-| cc_size    | Relative size of the corpus callosum                            |
-+------------+-----------------------------------------------------------------+
-| lh_holes   | Number of holes in the left hemisphere                          |
-+------------+-----------------------------------------------------------------+
-| rh_holes   | Number of holes in the right hemisphere                         |
-+------------+-----------------------------------------------------------------+
-| lh_defects | Number of defects in the left hemisphere                        |
-+------------+-----------------------------------------------------------------+
-| rh_defects | Number of defects in the right hemisphere                       |
-+------------+-----------------------------------------------------------------+
-| topo_lh    | Topological fixing time for the left hemisphere                 |
-+------------+-----------------------------------------------------------------+
-| topo_rh    | Topological fixing time for the right hemisphere                |
-+------------+-----------------------------------------------------------------+
-| con_lh_snr | WM/GM contrast signal-to-noise ratio in the left hemisphere     |
-+------------+-----------------------------------------------------------------+
-| con_rh_snr | WM/GM contrast signal-to-noise ratio in the right hemisphere    |
-+------------+-----------------------------------------------------------------+
-| rot_tal_x  | Rotation component of the Talairach transform around the x axis |
-+------------+-----------------------------------------------------------------+
-| rot_tal_y  | Rotation component of the Talairach transform around the y axis |
-+------------+-----------------------------------------------------------------+
-| rot_tal_z  | Rotation component of the Talairach transform around the z axis |
-+------------+-----------------------------------------------------------------+
++-----------------+------------------------------------------------------------------------------------------+
+| Variable        | Description                                                                              |
++=================+==========================================================================================+
+| subject         | Subject ID                                                                               |
++-----------------+------------------------------------------------------------------------------------------+
+| wm_snr_orig     | Signal-to-noise ratio for white matter in orig.mgz                                       |
++-----------------+------------------------------------------------------------------------------------------+
+| gm_snr_orig     | Signal-to-noise ratio for gray matter in orig.mgz                                        |
++-----------------+------------------------------------------------------------------------------------------+
+| wm_snr_norm     | Signal-to-noise ratio for white matter in norm.mgz                                       |
++-----------------+------------------------------------------------------------------------------------------+
+| gm_snr_norm     | Signal-to-noise ratio for gray matter in norm.mgz                                        |
++-----------------+------------------------------------------------------------------------------------------+
+| cc_size         | Relative size of the corpus callosum                                                     |
++-----------------+------------------------------------------------------------------------------------------+
+| lh_holes        | Number of holes in the left hemisphere                                                   |
++-----------------+------------------------------------------------------------------------------------------+
+| rh_holes        | Number of holes in the right hemisphere                                                  |
++-----------------+------------------------------------------------------------------------------------------+
+| lh_defects      | Number of defects in the left hemisphere                                                 |
++-----------------+------------------------------------------------------------------------------------------+
+| rh_defects      | Number of defects in the right hemisphere                                                |
++-----------------+------------------------------------------------------------------------------------------+
+| topo_lh         | Topological fixing time for the left hemisphere                                          |
++-----------------+------------------------------------------------------------------------------------------+
+| topo_rh         | Topological fixing time for the right hemisphere                                         |
++-----------------+------------------------------------------------------------------------------------------+
+| con_lh_snr      | WM/GM contrast signal-to-noise ratio in the left hemisphere                              |
++-----------------+------------------------------------------------------------------------------------------+
+| con_rh_snr      | WM/GM contrast signal-to-noise ratio in the right hemisphere                             |
++-----------------+------------------------------------------------------------------------------------------+
+| rot_tal_x       | Rotation component of the Talairach transform around the x axis                          |
++-----------------+------------------------------------------------------------------------------------------+
+| rot_tal_y       | Rotation component of the Talairach transform around the y axis                          |
++-----------------+------------------------------------------------------------------------------------------+
+| rot_tal_z       | Rotation component of the Talairach transform around the z axis                          |
++-----------------+------------------------------------------------------------------------------------------+
+| efc             | MRIQC-style entropy focus criterion (harmonized orig.mgz)                                |
++-----------------+------------------------------------------------------------------------------------------+
+| qi2             | MRIQC-style Mortamet quality index 2 (conformed orig.mgz)                                |
++-----------------+------------------------------------------------------------------------------------------+
+| fber            | MRIQC-style foreground-background energy ratio (harmonized orig.mgz)                     |
++-----------------+------------------------------------------------------------------------------------------+
+| snr_tissue_total| MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)|
++-----------------+------------------------------------------------------------------------------------------+
+| snr_head        | MRIQC-style signal-to-noise ratio over the head mask (harmonized orig.mgz)               |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_mean         | Mean background intensity (harmonized orig.mgz)                                          |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_median       | Median background intensity (harmonized orig.mgz)                                        |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_std          | Standard deviation of background intensity (harmonized orig.mgz)                         |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_mad          | Median absolute deviation of background intensity (harmonized orig.mgz)                  |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_kurtosis     | Kurtosis of background intensity (harmonized orig.mgz)                                   |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_p05          | 5th percentile of background intensity (harmonized orig.mgz)                             |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_p95          | 95th percentile of background intensity (harmonized orig.mgz)                            |
++-----------------+------------------------------------------------------------------------------------------+
+| bg_n            | Number of background voxels (harmonized orig.mgz)                                        |
++-----------------+------------------------------------------------------------------------------------------+
+
+Note: the ``efc``, ``qi2``, ``fber``, ``snr_tissue_total``, ``snr_head``, and ``bg_*`` metrics are adapted from the `MRIQC toolbox <https://github.com/poldracklab/mriqc>`_'s QC pipeline, but reuse this toolbox's own FreeSurfer/FastSurfer bias-field correction rather than MRIQC's own N4-based correction step. As a result, these values will not be numerically identical to running MRIQC directly on the same data, even though the underlying metrics and computation logic are the same.
 
 The program will use an existing output directory (or try to create it) and write a CSV table into that location. The CSV table will contain the above metrics plus a subject identifier.
 

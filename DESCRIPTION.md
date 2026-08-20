@@ -32,6 +32,26 @@ con_rh_snr     |   wm/gm contrast signal-to-noise ratio in the right hemisphere
 rot_tal_x      |   rotation component of the Talairach transform around the x axis
 rot_tal_y      |   rotation component of the Talairach transform around the y axis
 rot_tal_z      |   rotation component of the Talairach transform around the z axis
+efc              |   MRIQC-style entropy focus criterion (harmonized orig.mgz)
+qi2              |   MRIQC-style Mortamet quality index 2 (conformed orig.mgz)
+fber             |   MRIQC-style foreground-background energy ratio (harmonized orig.mgz)
+snr_tissue_total |   MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)
+snr_head         |   MRIQC-style signal-to-noise ratio over the head mask (harmonized orig.mgz)
+bg_mean          |   mean background intensity (harmonized orig.mgz)
+bg_median        |   median background intensity (harmonized orig.mgz)
+bg_std           |   standard deviation of background intensity (harmonized orig.mgz)
+bg_mad           |   median absolute deviation of background intensity (harmonized orig.mgz)
+bg_kurtosis      |   kurtosis of background intensity (harmonized orig.mgz)
+bg_p05           |   5th percentile of background intensity (harmonized orig.mgz)
+bg_p95           |   95th percentile of background intensity (harmonized orig.mgz)
+bg_n             |   number of background voxels (harmonized orig.mgz)
+
+Note: the `efc`, `qi2`, `fber`, `snr_tissue_total`, `snr_head`, and `bg_*` metrics
+are adapted from the [MRIQC toolbox](https://github.com/poldracklab/mriqc)'s QC
+pipeline, but reuse this toolbox's own FreeSurfer/FastSurfer bias-field correction
+rather than MRIQC's own N4-based correction step. As a result, these values will
+not be numerically identical to running MRIQC directly on the same data, even
+though the underlying metrics and computation logic are the same.
 
 The program will use an existing output directory (or try to create it) and
 write a csv table into that location. The csv table will contain the above
@@ -115,7 +135,7 @@ required for running these analyses, otherwise `NaNs` will be returned.
 
 For comparisons with the normative values, lower and upper bounds are computed
 from the 95% prediction intervals of the regression models given in Potvin et
-al., 1996, and values exceeding these bounds will be flagged. As an
+al., 2016, and values exceeding these bounds will be flagged. As an
 alternative, users may specify their own normative values by using the
 '--outlier-table' argument. This requires a custom csv table with headers
 `label`, `upper`, and `lower`, where `label` indicates a column of anatomical
