@@ -720,7 +720,7 @@ def _parse_arguments():
         required=False,
     )  # this is currently a hidden "expert" option
     expert.add_argument(
-        "--motion-rotmask",
+        "--rotmask",
         dest="motion_rotmask",
         help="full path to an externally computed rotation mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
@@ -733,7 +733,7 @@ def _parse_arguments():
         required=False,
     )
     expert.add_argument(
-        "--motion-headmask",
+        "--headmask",
         dest="motion_headmask",
         help="full path to an externally computed head mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
@@ -746,13 +746,13 @@ def _parse_arguments():
         required=False,
     )
     expert.add_argument(
-        "--motion-airmask",
+        "--airmask",
         dest="motion_airmask",
         help="full path to an externally computed air mask (NIfTI) to use "
         "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
         "full path; it is not assumed to be located within the subject's mri "
         "subfolder. If omitted, an air mask is computed internally. Fails the "
-        "same way as --motion-headmask if given but unusable.",
+        "same way as --headmask if given but unusable.",
         default=None,
         metavar="<filename>",
         required=False,

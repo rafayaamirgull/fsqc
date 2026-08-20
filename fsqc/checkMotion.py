@@ -29,12 +29,11 @@ reference volumes are used, mirroring mriqc's own ``in_ras``/``in_noinu``
 split: the merely-conformed ``ref_image`` (``orig.mgz`` by default) feeds
 QI2 and the rotation mask, while the bias-field-corrected ``nu_image``
 (``nu.mgz`` by default; ``orig_nu.mgz`` for FastSurfer output) feeds the
-internally computed head mask and is harmonized (rescaled so the
-white-matter mask's median intensity is 1000, mirroring mriqc's own
-``Harmonize`` step) before EFC/FBER/SNR/background stats are computed from
-it. QI2 is computed by a local, pure-computation port of mriqc's
-``art_qi2`` (see :func:`_computeQi2`), to avoid its unconditional SVG report
-output.
+internally computed head mask and is harmonized (rescaled so the white-matter
+mask's median intensity is 1000, mirroring mriqc's own ``Harmonize`` step)
+before EFC/FBER/SNR/background stats are computed from it. QI2 is computed by
+a local, pure-computation port of mriqc's ``art_qi2`` (see :func:`_computeQi2`),
+to avoid its unconditional SVG report output.
 
 Unlike mriqc, which bias-corrects via its own two-pass ANTs
 ``N4BiasFieldCorrection`` (SynthStrip-mask-guided, after percentile
@@ -267,7 +266,7 @@ def _computeRotmaskMortamet(img, min_size=500):
     label_im, nb_labels = nd.label(mask)
     if nb_labels > 2:
         sizes = nd.sum(mask, label_im, list(range(nb_labels + 1)))
-        ordered = sorted(zip(sizes, list(range(nb_labels + 1))), reverse=True)
+        ordered = sorted(zip(sizes, list(range(nb_labels + 1)), strict=True), reverse=True)
         for _, label in ordered[2:]:
             mask[label_im == label] = 0
 
