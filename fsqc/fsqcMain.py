@@ -91,6 +91,19 @@ def get_help(print_help=True, return_help=False):
     - rot_tal_x     ...  rotation component of the Talairach transform around the x axis
     - rot_tal_y     ...  rotation component of the Talairach transform around the y axis
     - rot_tal_z     ...  rotation component of the Talairach transform around the z axis
+    - efc             ...  MRIQC-style entropy focus criterion (harmonized nu_image)
+    - qi2             ...  MRIQC-style Mortamet quality index 2 (conformed orig.mgz)
+    - fber            ...  MRIQC-style foreground-background energy ratio (harmonized nu_image)
+    - snr_tissue_total ...  MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized nu_image)
+    - snr_head        ...  MRIQC-style signal-to-noise ratio over the head mask (harmonized nu_image)
+    - bg_mean     ...  mean background intensity (harmonized nu_image)
+    - bg_median   ...  median background intensity (harmonized nu_image)
+    - bg_std      ...  standard deviation of background intensity (harmonized nu_image)
+    - bg_mad      ...  median absolute deviation of background intensity (harmonized nu_image)
+    - bg_kurtosis ...  kurtosis of background intensity (harmonized nu_image)
+    - bg_p05      ...  5th percentile of background intensity (harmonized nu_image)
+    - bg_p95      ...  95th percentile of background intensity (harmonized nu_image)
+    - bg_n        ...  number of background voxels (harmonized nu_image)
 
     The program will use an existing output directory (or try to create it) and
     write a csv table into that location. The csv table will contain the above
@@ -196,6 +209,7 @@ def get_help(print_help=True, return_help=False):
                                   [--subjects-file <file>]
                                   [--screenshots] [--screenshots-html]
                                   [--surfaces] [--surfaces-html]
+                                  [--surfaces_views <view> [<view> ...]]
                                   [--skullstrip] [--skullstrip-html]
                                   [--fornix] [--fornix-html] [--hypothalamus]
                                   [--hypothalamus-html] [--hippocampus]
@@ -222,6 +236,10 @@ def get_help(print_help=True, return_help=False):
           --surfaces            create screenshots of individual brain surfaces
           --surfaces-html       create screenshots of individual brain surfaces
                                 and html summary page
+          --surfaces_views      camera views for surface images. Choose from:
+                                anterior, posterior, left, right, superior,
+                                inferior. default: left, right, superior,
+                                inferior
           --skullstrip          create screenshots of individual brainmasks
           --skullstrip-html     create screenshots of individual brainmasks and
                                 html summary page
@@ -295,6 +313,34 @@ def get_help(print_help=True, return_help=False):
                                 are x=-10 x=10 y=0 z=0.
           --screenshots_layout <rows> <columns>
                                 layout matrix for screenshot images
+          --rotmask <filename>
+                                full path to an externally computed rotation mask
+                                (NIfTI or FreeSurfer MGH/MGZ) to use for the
+                                motion/noise metrics, in the same grid as orig.mgz.
+                                Must be a full path; it is not assumed to be
+                                located within the subject's mri subfolder. If
+                                omitted, a rotmask is computed internally. If given
+                                but the file cannot be found, loaded, or does not
+                                match orig.mgz's shape, the motion metrics are
+                                returned as NaN for that subject.
+          --headmask <filename>
+                                full path to an externally computed head mask
+                                (NIfTI or FreeSurfer MGH/MGZ) to use for the
+                                motion/noise metrics, in the same grid as orig.mgz.
+                                Must be a full path; it is not assumed to be
+                                located within the subject's mri subfolder. If
+                                omitted, a head mask is computed internally. If
+                                given but the file cannot be found, loaded, or does
+                                not match orig.mgz's shape, the motion metrics are
+                                returned as NaN for that subject.
+          --airmask <filename>
+                                full path to an externally computed air mask
+                                (NIfTI or FreeSurfer MGH/MGZ) to use for the
+                                motion/noise metrics, in the same grid as orig.mgz.
+                                Must be a full path; it is not assumed to be
+                                located within the subject's mri subfolder. If
+                                omitted, an air mask is computed internally. Fails
+                                the same way as --headmask if given but unusable.
 
 
     ========================
@@ -445,7 +491,7 @@ def _parse_arguments():
     required.add_argument(
         "--subjects_dir",
         dest="subjects_dir",
-        help="subjects directory with a set of Freesurfer processed individual datasets.",
+        help="subjects directory with a set of Freesurfer- or Fastsurfer-processed individual datasets.",
         metavar="<directory>",
         required=True,
     )
@@ -706,6 +752,47 @@ def _parse_arguments():
         metavar="<neurological|radiological>",
         required=False,
     )  # this is currently a hidden "expert" option
+    expert.add_argument(
+        "--rotmask",
+        dest="motion_rotmask",
+        help="full path to an externally computed rotation mask (NIfTI or "
+        "FreeSurfer MGH/MGZ) to use "
+        "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
+        "full path; it is not assumed to be located within the subject's mri "
+        "subfolder. If omitted, a rotmask is computed internally. If given but "
+        "the file cannot be found, loaded, or does not match orig.mgz's shape, "
+        "the motion metrics are returned as NaN for that subject.",
+        default=None,
+        metavar="<filename>",
+        required=False,
+    )
+    expert.add_argument(
+        "--headmask",
+        dest="motion_headmask",
+        help="full path to an externally computed head mask (NIfTI or "
+        "FreeSurfer MGH/MGZ) to use "
+        "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
+        "full path; it is not assumed to be located within the subject's mri "
+        "subfolder. If omitted, a head mask is computed internally. If given "
+        "but the file cannot be found, loaded, or does not match orig.mgz's "
+        "shape, the motion metrics are returned as NaN for that subject.",
+        default=None,
+        metavar="<filename>",
+        required=False,
+    )
+    expert.add_argument(
+        "--airmask",
+        dest="motion_airmask",
+        help="full path to an externally computed air mask (NIfTI or "
+        "FreeSurfer MGH/MGZ) to use "
+        "for the motion/noise metrics, in the same grid as orig.mgz. Must be a "
+        "full path; it is not assumed to be located within the subject's mri "
+        "subfolder. If omitted, an air mask is computed internally. Fails the "
+        "same way as --headmask if given but unusable.",
+        default=None,
+        metavar="<filename>",
+        required=False,
+    )
 
     help = parser.add_argument_group("getting help")
     help.add_argument(
@@ -768,6 +855,9 @@ def _parse_arguments():
     argsDict["group_only"] = args.group_only
     argsDict["exit_on_error"] = args.exit_on_error
     argsDict["skip_existing"] = args.skip_existing
+    argsDict["motion_rotmask"] = args.motion_rotmask
+    argsDict["motion_headmask"] = args.motion_headmask
+    argsDict["motion_airmask"] = args.motion_airmask
 
     #
     return argsDict
@@ -1187,6 +1277,21 @@ def _check_arguments(argsDict):
                 argsDict["outlier_table"],
             )
 
+    # check if externally supplied motion masks exist, if they were given
+    for mask_key, mask_label in (
+        ("motion_rotmask", "rotation mask"),
+        ("motion_headmask", "head mask"),
+        ("motion_airmask", "air mask"),
+    ):
+        if argsDict[mask_key] is not None:
+            if os.path.isfile(argsDict[mask_key]):
+                logging.info("Found external " + mask_label + " " + argsDict[mask_key])
+            else:
+                raise FileNotFoundError(
+                    "ERROR: Could not find external " + mask_label + " ",
+                    argsDict[mask_key],
+                )
+
     # check for required files
     subjects_to_remove = list()
     for subject in argsDict["subjects"]:
@@ -1547,6 +1652,7 @@ def _do_fsqc(argsDict):
 
     from fsqc.checkCCSize import checkCCSize
     from fsqc.checkContrast import checkContrast
+    from fsqc.checkMotion import checkMotion
     from fsqc.checkRotation import checkRotation
     from fsqc.checkSNR import checkSNR
     from fsqc.checkTopology import checkTopology
@@ -1616,9 +1722,15 @@ def _do_fsqc(argsDict):
             # set images
 
             if argsDict["fastsurfer"] is True:
+                ref_image = "orig.mgz"
+                nu_image = "orig_nu.mgz"
                 aparc_image = "aparc.DKTatlas+aseg.deep.mgz"
+                aseg_image = "aseg.mgz"
             else:
+                ref_image = "orig.mgz"
+                nu_image = "nu.mgz"
                 aparc_image = "aparc+aseg.mgz"
+                aseg_image = "aseg.mgz"
 
             # ----------------------------------------------------------------------
             # add subject to dictionary
@@ -1803,6 +1915,54 @@ def _do_fsqc(argsDict):
                     if argsDict["exit_on_error"] is True:
                         raise
 
+                # check motion
+                try:
+                    motion_metrics = checkMotion(
+                        subjects_dir=argsDict["subjects_dir"],
+                        subject=subject,
+                        ref_image=ref_image,
+                        nu_image=nu_image,
+                        output_dir=metrics_outdir,
+                        rotmask_file=argsDict["motion_rotmask"],
+                        headmask_file=argsDict["motion_headmask"],
+                        airmask_file=argsDict["motion_airmask"],
+                        aparc_image=aparc_image,
+                        aseg_image=aseg_image,
+                        write_masks=False,
+                    )
+                    motion_efc = motion_metrics["efc"]
+                    motion_qi2 = motion_metrics["qi2"]
+                    motion_fber = motion_metrics["fber"]
+                    motion_snr_tissue_total = motion_metrics["snr_tissue_total"]
+                    motion_snr_head = motion_metrics["snr_head"]
+                    motion_bg_mean = motion_metrics["bg_mean"]
+                    motion_bg_median = motion_metrics["bg_median"]
+                    motion_bg_std = motion_metrics["bg_std"]
+                    motion_bg_mad = motion_metrics["bg_mad"]
+                    motion_bg_kurtosis = motion_metrics["bg_kurtosis"]
+                    motion_bg_p05 = motion_metrics["bg_p05"]
+                    motion_bg_p95 = motion_metrics["bg_p95"]
+                    motion_bg_n = motion_metrics["bg_n"]
+                except Exception as e:
+                    logging.error("ERROR: Motion failed for " + subject)
+                    logging.error("Reason: " + str(e))
+                    motion_efc = np.nan
+                    motion_qi2 = np.nan
+                    motion_fber = np.nan
+                    motion_snr_tissue_total = np.nan
+                    motion_snr_head = np.nan
+                    motion_bg_mean = np.nan
+                    motion_bg_median = np.nan
+                    motion_bg_std = np.nan
+                    motion_bg_mad = np.nan
+                    motion_bg_kurtosis = np.nan
+                    motion_bg_p05 = np.nan
+                    motion_bg_p95 = np.nan
+                    motion_bg_n = 0
+                    metrics_status = 1
+                    if argsDict["exit_on_error"] is True:
+                        raise
+
                 # store data
                 metricsDict[subject].update(
                     {
@@ -1822,6 +1982,19 @@ def _do_fsqc(argsDict):
                         "rot_tal_x": rot_tal_x,
                         "rot_tal_y": rot_tal_y,
                         "rot_tal_z": rot_tal_z,
+                        "efc": motion_efc,
+                        "qi2": motion_qi2,
+                        "fber": motion_fber,
+                        "snr_tissue_total": motion_snr_tissue_total,
+                        "snr_head": motion_snr_head,
+                        "bg_mean": motion_bg_mean,
+                        "bg_median": motion_bg_median,
+                        "bg_std": motion_bg_std,
+                        "bg_mad": motion_bg_mad,
+                        "bg_kurtosis": motion_bg_kurtosis,
+                        "bg_p05": motion_bg_p05,
+                        "bg_p95": motion_bg_p95,
+                        "bg_n": motion_bg_n,
                     }
                 )
 
@@ -2850,6 +3023,19 @@ def _do_fsqc(argsDict):
                 "rot_tal_x",
                 "rot_tal_y",
                 "rot_tal_z",
+                "efc",
+                "qi2",
+                "fber",
+                "snr_tissue_total",
+                "snr_head",
+                "bg_mean",
+                "bg_median",
+                "bg_std",
+                "bg_mad",
+                "bg_kurtosis",
+                "bg_p05",
+                "bg_p95",
+                "bg_n",
             ]
         )
 
@@ -3517,7 +3703,9 @@ def _start_logging(argsDict):
 
     #
     logfile = os.path.join(argsDict["output_dir"], "logfile.txt")
-    logging.getLogger().addHandler(logging.FileHandler(filename=logfile, mode="w"))
+    logfile_handler = logging.FileHandler(filename=logfile, mode="w")
+    logfile_handler.setFormatter(logging.Formatter(logfile_format))
+    logging.getLogger().addHandler(logfile_handler)
 
     # initial messages
     logging.info("Starting logging for fsqctools ...")
@@ -3573,6 +3761,9 @@ def run_fsqc(
     group_only=False,
     exit_on_error=False,
     skip_existing=False,
+    motion_rotmask=None,
+    motion_headmask=None,
+    motion_airmask=None,
     logfile=None,
 ):
     """
@@ -3664,6 +3855,24 @@ def run_fsqc(
     skip_existing : bool, default: False
         Skip processing for a given case if output already exists, even with
         possibly different parameters or settings.
+    motion_rotmask : str, default: None
+        Full path to an externally computed rotation mask (NIfTI or
+        FreeSurfer MGH/MGZ) to use for the motion/noise metrics, in the same
+        grid as orig.mgz. Not assumed to live under the subject's mri
+        subfolder. If omitted, a rotmask is computed internally; if given
+        but unusable, motion metrics are returned as NaN for that subject.
+    motion_headmask : str, default: None
+        Full path to an externally computed head mask (NIfTI or FreeSurfer
+        MGH/MGZ) to use for the motion/noise metrics, in the same grid as
+        orig.mgz. Not assumed to live under the subject's mri subfolder. If
+        omitted, a head mask is computed internally; if given but unusable,
+        motion metrics are returned as NaN for that subject.
+    motion_airmask : str, default: None
+        Full path to an externally computed air mask (NIfTI or FreeSurfer
+        MGH/MGZ) to use for the motion/noise metrics, in the same grid as
+        orig.mgz. Not assumed to live under the subject's mri subfolder. If
+        omitted, an air mask is computed internally; fails the same way as
+        motion_headmask if given but unusable.
     logfile : str, default: None
         Specify a custom location for the logfile. Default location is the
         output directory.
@@ -3719,6 +3928,9 @@ def run_fsqc(
         argsDict["group_only"] = group_only
         argsDict["exit_on_error"] = exit_on_error
         argsDict["skip_existing"] = skip_existing
+        argsDict["motion_rotmask"] = motion_rotmask
+        argsDict["motion_headmask"] = motion_headmask
+        argsDict["motion_airmask"] = motion_airmask
         argsDict["logfile"] = logfile
 
     elif (argsDict is not None) and (

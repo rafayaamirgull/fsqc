@@ -9,6 +9,7 @@ API References
 
     checkCCSize
     checkContrast
+    checkMotion
     checkSNR
     checkRotation
     checkTopology
