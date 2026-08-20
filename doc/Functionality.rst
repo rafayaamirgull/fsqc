@@ -40,31 +40,31 @@ The core functionality of this toolbox is to compute the following features:
 +-----------------+------------------------------------------------------------------------------------------+
 | rot_tal_z       | Rotation component of the Talairach transform around the z axis                          |
 +-----------------+------------------------------------------------------------------------------------------+
-| efc             | MRIQC-style entropy focus criterion (harmonized orig.mgz)                                |
+| efc             | MRIQC-style entropy focus criterion (harmonized nu_image)                                |
 +-----------------+------------------------------------------------------------------------------------------+
 | qi2             | MRIQC-style Mortamet quality index 2 (conformed orig.mgz)                                |
 +-----------------+------------------------------------------------------------------------------------------+
-| fber            | MRIQC-style foreground-background energy ratio (harmonized orig.mgz)                     |
+| fber            | MRIQC-style foreground-background energy ratio (harmonized nu_image)                     |
 +-----------------+------------------------------------------------------------------------------------------+
-| snr_tissue_total| MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized orig.mgz)|
+| snr_tissue_total| MRIQC-style signal-to-noise ratio, mean over GM/WM/CSF tissue masks (harmonized nu_image)|
 +-----------------+------------------------------------------------------------------------------------------+
-| snr_head        | MRIQC-style signal-to-noise ratio over the head mask (harmonized orig.mgz)               |
+| snr_head        | MRIQC-style signal-to-noise ratio over the head mask (harmonized nu_image)               |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_mean         | Mean background intensity (harmonized orig.mgz)                                          |
+| bg_mean         | Mean background intensity (harmonized nu_image)                                          |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_median       | Median background intensity (harmonized orig.mgz)                                        |
+| bg_median       | Median background intensity (harmonized nu_image)                                        |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_std          | Standard deviation of background intensity (harmonized orig.mgz)                         |
+| bg_std          | Standard deviation of background intensity (harmonized nu_image)                         |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_mad          | Median absolute deviation of background intensity (harmonized orig.mgz)                  |
+| bg_mad          | Median absolute deviation of background intensity (harmonized nu_image)                  |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_kurtosis     | Kurtosis of background intensity (harmonized orig.mgz)                                   |
+| bg_kurtosis     | Kurtosis of background intensity (harmonized nu_image)                                   |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_p05          | 5th percentile of background intensity (harmonized orig.mgz)                             |
+| bg_p05          | 5th percentile of background intensity (harmonized nu_image)                             |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_p95          | 95th percentile of background intensity (harmonized orig.mgz)                            |
+| bg_p95          | 95th percentile of background intensity (harmonized nu_image)                            |
 +-----------------+------------------------------------------------------------------------------------------+
-| bg_n            | Number of background voxels (harmonized orig.mgz)                                        |
+| bg_n            | Number of background voxels (harmonized nu_image)                                        |
 +-----------------+------------------------------------------------------------------------------------------+
 
 Note: the ``efc``, ``qi2``, ``fber``, ``snr_tissue_total``, ``snr_head``, and ``bg_*`` metrics are adapted from the `MRIQC toolbox <https://github.com/poldracklab/mriqc>`_'s QC pipeline, but reuse this toolbox's own FreeSurfer/FastSurfer bias-field correction rather than MRIQC's own N4-based correction step. As a result, these values will not be numerically identical to running MRIQC directly on the same data, even though the underlying metrics and computation logic are the same.
