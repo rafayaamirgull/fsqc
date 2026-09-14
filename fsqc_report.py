@@ -10,6 +10,7 @@ Examples
 --------
 python3 fsqc_report.py output/fsqc-results.csv
 python3 fsqc_report.py output/fsqc-results.csv -R
+python3 fsqc_report.py output/fsqc-results.csv -H
 python3 fsqc_report.py output/fsqc-results.csv --subject sub-001
 python3 fsqc_report.py output/fsqc-results.csv --save-report fsqc-report.txt
 python3 fsqc_report.py output/fsqc-results.csv --profile descriptive
@@ -2252,6 +2253,272 @@ def format_markdown_document(
     return "\n".join(lines) + "\n"
 
 
+def _split_text_report(report: str) -> list[tuple[str, str]]:
+    """Split the numbered plain-text report into HTML-friendly sections."""
+
+    sections: list[tuple[str, str]] = []
+    title = "Report summary"
+    body: list[str] = []
+    lines = report.splitlines()
+    # The first three lines are the terminal banner, which the HTML header replaces.
+    for line in lines[3:]:
+        number, separator, candidate = line.partition(". ")
+        if separator and number.isdigit() and candidate:
+            if body:
+                sections.append(
+                    (title, textwrap.dedent("\n".join(body)).strip("\n"))
+                )
+            title = candidate.title().replace("Mriqc", "MRIQC").replace(
+                "Brainprint", "BrainPrint"
+            )
+            body = []
+            continue
+        if line and set(line) in ({"-"}, {"="}):
+            continue
+        body.append(line)
+    if body:
+        sections.append((title, textwrap.dedent("\n".join(body)).strip("\n")))
+    return sections
+
+
+def _html_visual_gallery(
+    visuals: Sequence[tuple[str, Path]], document_dir: Path
+) -> str:
+    """Render discovered QC evidence as an accessible HTML gallery."""
+
+    primary: list[tuple[str, Path]] = []
+    surfaces: list[tuple[str, Path]] = []
+    for label, path in visuals:
+        if path.is_file():
+            primary.append((label.capitalize(), path))
+        elif path.is_dir():
+            surfaces.extend(
+                (_surface_label(image), image) for image in sorted(path.glob("*.png"))
+            )
+
+    def figures(items: Sequence[tuple[str, Path]]) -> str:
+        result: list[str] = []
+        for label, path in items:
+            source = html.escape(_md_path(path, document_dir), quote=True)
+            caption = html.escape(label)
+            result.append(
+                '<figure><a href="{source}"><img src="{source}" alt="{alt}" '
+                'loading="lazy"></a><figcaption>{caption}</figcaption></figure>'.format(
+                    source=source,
+                    alt=html.escape(label, quote=True),
+                    caption=caption,
+                )
+            )
+        return "".join(result)
+
+    blocks: list[str] = []
+    if primary:
+        blocks.append('<div class="image-grid">' + figures(primary) + "</div>")
+    if surfaces:
+        blocks.append(
+            '<details class="surface-gallery"><summary>Surface rendering gallery '
+            f'({len(surfaces)} images)</summary><div class="image-grid">'
+            + figures(surfaces)
+            + "</div></details>"
+        )
+    if not blocks:
+        blocks.append(
+            '<p class="empty">No companion images were discovered. Generate FSQC screenshots, '
+            "surface renderings, and skull-strip outputs, or inspect the reconstruction "
+            "interactively.</p>"
+        )
+    return "".join(blocks)
+
+
+def format_html_document(
+    report_items: Sequence[
+        tuple[Mapping[str, object], FSQCAnalyzer, Sequence[tuple[str, Path]], Path | None]
+    ],
+    text_reports: Sequence[str],
+    source_path: Path,
+    metadata: Mapping[str, str],
+    html_path: Path,
+) -> str:
+    """Render a styled, standalone HTML document for one or more subjects."""
+
+    generated = datetime.now().astimezone().isoformat(timespec="seconds")
+    source_link = html.escape(_md_path(source_path, html_path.parent), quote=True)
+    pipeline = html.escape(metadata.get("pipeline", "not identified"))
+    version = html.escape(metadata.get("version", "not available"))
+    fsqc_html = source_path.parent / "fsqc-results.html"
+
+    subject_links: list[str] = []
+    subject_articles: list[str] = []
+    for index, ((model, analyzer, visuals, _), text_report) in enumerate(
+        zip(report_items, text_reports, strict=True)
+    ):
+        subject = html.escape(str(model["subject"]))
+        disposition = html.escape(str(model["disposition"]))
+        findings = list(model["findings"])
+        high_count = sum(item.severity == Severity.HIGH for item in findings)
+        review_count = sum(item.severity == Severity.REVIEW for item in findings)
+        note_count = sum(item.severity == Severity.NOTE for item in findings)
+        anchor = f"subject-{index + 1}"
+        subject_links.append(f'<a href="#{anchor}">{subject}</a>')
+
+        finding_cards: list[str] = []
+        for item in findings:
+            level = SEVERITY_LABEL[item.severity]
+            finding_cards.append(
+                f'<article class="finding severity-{level.lower()}">'
+                f'<div class="finding-meta"><span>{html.escape(level)}</span> · '
+                f'{html.escape(item.domain)}</div>'
+                f'<h4>{html.escape(item.title)}</h4>'
+                f'<p><strong>Evidence:</strong> {html.escape(item.evidence)}</p>'
+                f'<p>{html.escape(item.interpretation)}</p>'
+                f'<p class="action"><strong>Review action:</strong> '
+                f'{html.escape(item.action)}</p></article>'
+            )
+        if not finding_cards:
+            finding_cards.append(
+                '<p class="empty">No quantitative flags were generated. This is not equivalent '
+                "to a visual QC pass.</p>"
+            )
+
+        report_sections = []
+        for section_number, (section_title, section_body) in enumerate(
+            _split_text_report(text_report), start=1
+        ):
+            report_sections.append(
+                f'<section class="report-section" id="{anchor}-section-{section_number}">'
+                f'<h3>{html.escape(section_title)}</h3>'
+                f'<pre>{html.escape(section_body)}</pre></section>'
+            )
+
+        subject_articles.append(
+            f'<article class="subject" id="{anchor}">'
+            '<header class="subject-header">'
+            f'<div><p class="eyebrow">Subject</p><h2>{subject}</h2></div>'
+            f'<div class="disposition">{disposition}</div></header>'
+            '<div class="stat-grid">'
+            f'<div><strong>{model["available_core"]}/{model["total_core"]}</strong><span>core metrics</span></div>'
+            f'<div><strong>{high_count}</strong><span>high priority</span></div>'
+            f'<div><strong>{review_count}</strong><span>review</span></div>'
+            f'<div><strong>{note_count}</strong><span>notes</span></div>'
+            f'<div><strong>{html.escape(analyzer.profile.name)}</strong><span>profile</span></div>'
+            "</div>"
+            '<section><h3>Priority findings</h3><div class="findings">'
+            + "".join(finding_cards)
+            + "</div></section>"
+            '<section><h3>Visual QC evidence</h3>'
+            + _html_visual_gallery(visuals, html_path.parent)
+            + "</section>"
+            '<section><h3>Complete detailed assessment</h3>'
+            '<p class="section-intro">The sections below preserve the measurements, caveats, '
+            "and review workflow from the terminal report.</p>"
+            + "".join(report_sections)
+            + "</section></article>"
+        )
+
+    original_link = ""
+    if fsqc_html.is_file() and fsqc_html.resolve() != html_path.resolve():
+        original = html.escape(_md_path(fsqc_html, html_path.parent), quote=True)
+        original_link = (
+            f'<a class="button secondary" href="{original}">Open original FSQC HTML</a>'
+        )
+
+    styles = """
+    :root{--ink:#16233a;--muted:#5d6b7d;--line:#dce3ec;--paper:#fff;
+    --wash:#f3f6fa;--navy:#17345c;--blue:#3268a8;--red:#b42318;--orange:#b54708;
+    --yellow:#946200;--green:#18794e}*{box-sizing:border-box}html{scroll-behavior:smooth}
+    body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.55 system-ui,-apple-system,
+    BlinkMacSystemFont,"Segoe UI",sans-serif}.page-header{background:linear-gradient(135deg,#102846,
+    #285c91);color:#fff;padding:3rem max(1.25rem,calc((100% - 1180px)/2)) 2.5rem}.eyebrow{
+    margin:0 0 .35rem;text-transform:uppercase;letter-spacing:.14em;font-size:.73rem;font-weight:750;
+    opacity:.78}.page-header h1{max-width:850px;margin:0;font-size:clamp(2rem,5vw,3.5rem);line-height:1.08}
+    .lede{max-width:800px;margin:1rem 0 0;color:#dfeafa;font-size:1.05rem}.warning{max-width:1180px;
+    margin:-1.2rem auto 1.5rem;background:#fff8e6;border:1px solid #efd18b;border-left:5px solid
+    #d69e2e;border-radius:10px;padding:1rem 1.2rem;box-shadow:0 8px 24px #17345c14}.container{
+    max-width:1180px;margin:auto;padding:0 1.25rem 4rem}.overview,.subject{background:var(--paper);
+    border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 26px #17345c0d;padding:1.4rem;
+    margin:1.5rem 0}.overview-grid,.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,
+    minmax(140px,1fr));gap:.75rem}.overview-grid div,.stat-grid div{background:var(--wash);border-radius:9px;
+    padding:.8rem}.overview-grid span,.stat-grid span{display:block;color:var(--muted);font-size:.78rem;
+    text-transform:uppercase;letter-spacing:.04em}.stat-grid strong{display:block;font-size:1.35rem;color:var(--navy)}
+    a{color:#235d9f}.button{display:inline-block;background:#fff;color:var(--navy);text-decoration:none;
+    font-weight:700;padding:.65rem .9rem;border-radius:8px;margin:.8rem .5rem 0 0}.button.secondary{
+    background:#dceafa}.subject-header{display:flex;gap:1rem;justify-content:space-between;align-items:center;
+    border-bottom:1px solid var(--line);padding-bottom:1rem}.subject-header h2{margin:0;font-size:2rem}
+    .disposition{max-width:560px;background:#fff1ee;color:#8d2018;border:1px solid #f2b8b1;border-radius:999px;
+    padding:.45rem .8rem;font-size:.82rem;font-weight:800;text-align:center}.subject section>h3{
+    margin:2rem 0 1rem;font-size:1.25rem;color:var(--navy)}.findings{display:grid;grid-template-columns:
+    repeat(auto-fit,minmax(300px,1fr));gap:1rem}.finding{border:1px solid var(--line);border-left:5px
+    solid #8291a5;border-radius:9px;padding:1rem;background:#fff}.finding h4{margin:.3rem 0 .7rem;font-size:1rem}
+    .finding p{margin:.45rem 0}.finding-meta{font-size:.76rem;text-transform:uppercase;letter-spacing:.05em;
+    font-weight:750;color:var(--muted)}.finding-meta span{color:inherit}.severity-high{border-left-color:var(--red)}
+    .severity-high .finding-meta{color:var(--red)}.severity-review{border-left-color:var(--orange)}
+    .severity-review .finding-meta{color:var(--orange)}.severity-note{border-left-color:#c08a00}
+    .severity-note .finding-meta{color:var(--yellow)}.action{background:var(--wash);padding:.55rem;border-radius:6px}
+    .image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+    figure{margin:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#eef2f7}
+    figure img{display:block;width:100%;height:330px;object-fit:contain;background:#101722}figcaption{
+    background:#fff;padding:.65rem;font-weight:650}.surface-gallery{margin-top:1rem;border:1px solid var(--line);
+    border-radius:9px;padding:.85rem}.surface-gallery summary{cursor:pointer;font-weight:750;color:var(--navy);
+    margin-bottom:.9rem}.report-section{margin:1rem 0!important;border:1px solid var(--line);border-radius:9px;
+    overflow:hidden}.report-section h3{margin:0!important;background:#eaf0f7;padding:.75rem 1rem;font-size:1rem!important}
+    pre{margin:0;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.55 ui-monospace,
+    SFMono-Regular,Consolas,monospace;background:#fbfcfe}.section-intro,.empty{color:var(--muted)}
+    .footer{text-align:center;color:var(--muted);padding:2rem}.jump-nav a{margin-right:.8rem;font-weight:700}
+    @media(max-width:650px){.page-header{padding-top:2rem}.subject-header{align-items:flex-start;
+    flex-direction:column}.disposition{border-radius:8px;text-align:left}.findings{grid-template-columns:1fr}
+    figure img{height:250px}}@media print{body{background:#fff}.page-header{background:#fff;color:#000;
+    padding:1rem 0}.lede{color:#333}.warning,.overview,.subject{box-shadow:none}.button,.jump-nav{display:none}
+    .subject{break-before:page}.surface-gallery[open] .image-grid{display:grid}}
+    """
+
+    return """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neuroimaging Quality-Control Report</title>
+<style>{styles}</style>
+</head>
+<body>
+<header class="page-header">
+  <p class="eyebrow">FreeSurfer / FastSurfer research QC</p>
+  <h1>Neuroimaging Quality-Control Report</h1>
+  <p class="lede">Automated interpretation of DeepMI FSQC metrics, processing evidence,
+  asymmetry measurements, statistical flags, and companion snapshots.</p>
+  <a class="button" href="{source_link}">Open source CSV</a>{original_link}
+</header>
+<aside class="warning"><strong>Automated triage only.</strong> This is not a diagnosis or a
+radiology report. Confirm important findings on the source T1, labels, and surface overlays before
+accepting, reprocessing, excluding, or considering reacquisition.</aside>
+<main class="container">
+  <section class="overview">
+    <p class="eyebrow">Report overview</p><h2>Processing context</h2>
+    <div class="overview-grid">
+      <div><span>Generated</span>{generated}</div>
+      <div><span>Pipeline</span>{pipeline}</div>
+      <div><span>FSQC version</span>{version}</div>
+      <div><span>Subjects</span>{subject_count}</div>
+    </div>
+    <p class="jump-nav"><strong>Jump to subject:</strong> {subject_links}</p>
+  </section>
+  {subject_articles}
+</main>
+<footer class="footer">Generated by <code>fsqc_report.py -H</code> · Research use only</footer>
+</body>
+</html>
+""".format(
+        styles=styles,
+        source_link=source_link,
+        original_link=original_link,
+        generated=html.escape(generated),
+        pipeline=pipeline,
+        version=version,
+        subject_count=len(report_items),
+        subject_links=" · ".join(subject_links),
+        subject_articles="".join(subject_articles),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct the command-line interface."""
 
@@ -2279,6 +2546,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--readme",
         action="store_true",
         help="Generate a pictorial README.md beside the input CSV.",
+    )
+    parser.add_argument(
+        "-H",
+        "--html",
+        action="store_true",
+        help="Generate a styled fsqc-report.html beside the input CSV.",
     )
     parser.add_argument(
         "--regions-file",
@@ -2440,6 +2713,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"error: cannot save README to {readme_path}: {exc}", file=sys.stderr)
             return 1
         print(f"\nGenerated pictorial README: {readme_path}")
+
+    if args.html:
+        html_path = base / "fsqc-report.html"
+        html_report = format_html_document(
+            report_items=report_items,
+            text_reports=reports,
+            source_path=source_path,
+            metadata=metadata,
+            html_path=html_path,
+        )
+        try:
+            html_path.write_text(html_report, encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot save HTML report to {html_path}: {exc}", file=sys.stderr)
+            return 1
+        print(f"\nGenerated HTML report: {html_path}")
     return 0
 
 

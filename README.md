@@ -440,12 +440,20 @@ Generate a pictorial `README.md` beside the CSV:
 python3 ./fsqc_report.py /my/output/directory/fsqc-results.csv -R
 ```
 
+Generate a styled, browser-friendly `fsqc-report.html` beside the CSV:
+
+```bash
+python3 ./fsqc_report.py /my/output/directory/fsqc-results.csv -H
+```
+
+Use `-R -H` together to generate both formats in one run.
+
 The `-R` report automatically links available FSQC screenshots, skull-strip,
 fornix, and surface-rendering images. For the most useful report, generate those
 optional outputs with `run_fsqc` first. Be aware that `-R` writes or replaces
 `README.md` in the CSV's directory.
 
-Useful options include `--subject <ID>` to report selected subjects,
+Useful options include `-H` for HTML, `--subject <ID>` to report selected subjects,
 `--save-report <file>` to save the plain-text report, and
 `--profile descriptive` to suppress fixed screening heuristics. Run
 `python3 ./fsqc_report.py --help` for all options.
