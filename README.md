@@ -448,10 +448,16 @@ python3 ./fsqc_report.py /my/output/directory/fsqc-results.csv -H
 
 Use `-R -H` together to generate both formats in one run.
 
-The `-R` report automatically links available FSQC screenshots, skull-strip,
-fornix, and surface-rendering images. For the most useful report, generate those
-optional outputs with `run_fsqc` first. Be aware that `-R` writes or replaces
-`README.md` in the CSV's directory.
+The HTML report presents the recommended human review process as a responsive,
+color-coded pathway from processing verification through the final documented
+QC decision.
+
+The `-R` and `-H` reports automatically group all available FSQC segmentation,
+skull-strip, fornix, hypothalamus, hippocampus/amygdala, and surface-rendering
+images. Surface views are separated into pial/inflated and left/right hemisphere
+galleries. For the most useful report, generate those optional outputs with
+`run_fsqc` first. Be aware that `-R` writes or replaces `README.md` in the CSV's
+directory.
 
 Useful options include `-H` for HTML, `--subject <ID>` to report selected subjects,
 `--save-report <file>` to save the plain-text report, and

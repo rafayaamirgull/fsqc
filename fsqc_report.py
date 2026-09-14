@@ -45,6 +45,31 @@ from urllib.parse import quote
 
 REPORT_WIDTH = 96
 MIN_COHORT_SIZE = 10
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+VISUAL_MODULES: tuple[tuple[str, str], ...] = (
+    ("screenshots", "Segmentation and cortical-boundary overlays"),
+    ("skullstrip", "Skull-strip and brainmask QC"),
+    ("fornix", "Corpus-callosum and fornix QC"),
+    ("hypothalamus", "Hypothalamus segmentation QC"),
+    ("hippocampus", "Hippocampus and amygdala segmentation QC"),
+)
+
+SURFACE_GROUP_ORDER: tuple[tuple[str, str], ...] = (
+    ("pial", "lh"),
+    ("pial", "rh"),
+    ("inflated", "lh"),
+    ("inflated", "rh"),
+)
+
+SURFACE_VIEW_ORDER = {
+    "left": 0,
+    "right": 1,
+    "anterior": 2,
+    "posterior": 3,
+    "superior": 4,
+    "inferior": 5,
+}
 
 
 class Severity(IntEnum):
@@ -531,17 +556,36 @@ def inspect_processing_integrity(
 
 
 def discover_visuals(base: Path, sid: str) -> list[tuple[str, Path]]:
-    """Find companion images that can support the recommended visual review."""
+    """Find all subject-level images produced by FSQC visual modules."""
 
-    candidates = (
-        ("segmentation/surface screenshot", base / "screenshots" / sid / f"{sid}.png"),
-        ("skull-strip screenshot", base / "skullstrip" / sid / f"{sid}.png"),
-        ("corpus-callosum/fornix screenshot", base / "fornix" / sid / "cc.png"),
-    )
-    found = [(label, path) for label, path in candidates if path.is_file()]
+    found: list[tuple[str, Path]] = []
+    for module, group_title in VISUAL_MODULES:
+        module_dir = base / module / sid
+        if not module_dir.is_dir():
+            continue
+        images = sorted(
+            path
+            for path in module_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        )
+        for path in images:
+            stem = path.stem.replace("_", " ").replace(".", " ").strip()
+            if module == "hippocampus" and stem.lower().endswith("-left"):
+                label = "Left hippocampus and amygdala segmentation"
+            elif module == "hippocampus" and stem.lower().endswith("-right"):
+                label = "Right hippocampus and amygdala segmentation"
+            elif len(images) == 1:
+                label = group_title
+            else:
+                label = f"{group_title} — {stem or path.name}"
+            found.append((label, path))
+
     surface_dir = base / "surfaces" / sid
-    if surface_dir.is_dir() and any(surface_dir.glob("*.png")):
-        found.append(("surface renderings", surface_dir))
+    if surface_dir.is_dir() and any(
+        path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        for path in surface_dir.rglob("*")
+    ):
+        found.append(("Cortical surface renderings", surface_dir))
     return found
 
 
@@ -1657,6 +1701,114 @@ def _surface_label(path: Path) -> str:
     return path.stem.replace(".", " ").replace("_", " ").title()
 
 
+def _visual_module(path: Path) -> str | None:
+    """Return the nearest recognized FSQC visual-module directory name."""
+
+    known = {module for module, _ in VISUAL_MODULES} | {"surfaces"}
+    for parent in path.parents:
+        if parent.name in known:
+            return parent.name
+    return None
+
+
+def _surface_parts(path: Path) -> tuple[str, str, str]:
+    """Extract hemisphere, surface type, and camera view from an FSQC filename."""
+
+    parts = path.stem.lower().split(".")
+    hemisphere = parts[0] if parts and parts[0] in {"lh", "rh"} else ""
+    surface_type = parts[1] if len(parts) > 1 else ""
+    view = parts[-1] if len(parts) > 2 else ""
+    return hemisphere, surface_type, view
+
+
+def _group_visuals(
+    visuals: Sequence[tuple[str, Path]],
+) -> tuple[
+    list[tuple[str, list[tuple[str, Path]]]],
+    list[tuple[str, list[tuple[str, Path]]]],
+]:
+    """Group QC images by FSQC module, surface type, and hemisphere."""
+
+    primary: dict[str, list[tuple[str, Path]]] = {
+        title: [] for _, title in VISUAL_MODULES
+    }
+    surface_groups: dict[tuple[str, str], list[tuple[str, Path]]] = {
+        key: [] for key in SURFACE_GROUP_ORDER
+    }
+    other_primary: list[tuple[str, Path]] = []
+    other_surfaces: list[tuple[str, Path]] = []
+    module_titles = dict(VISUAL_MODULES)
+    seen: set[Path] = set()
+
+    for supplied_label, supplied_path in visuals:
+        if supplied_path.is_dir():
+            images = sorted(
+                path
+                for path in supplied_path.rglob("*")
+                if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+            )
+            labelled_images = [(_surface_label(path), path) for path in images]
+        elif supplied_path.is_file() and supplied_path.suffix.lower() in IMAGE_SUFFIXES:
+            labelled_images = [(supplied_label, supplied_path)]
+        else:
+            continue
+
+        for label, path in labelled_images:
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            module = _visual_module(path)
+            if module == "surfaces":
+                hemisphere, surface_type, _ = _surface_parts(path)
+                key = (surface_type, hemisphere)
+                if key in surface_groups:
+                    surface_groups[key].append((_surface_label(path), path))
+                else:
+                    other_surfaces.append((_surface_label(path), path))
+            elif module in module_titles:
+                primary[module_titles[module]].append((label, path))
+            else:
+                other_primary.append((label, path))
+
+    primary_result = [
+        (title, sorted(items, key=lambda item: item[1].as_posix()))
+        for title, items in primary.items()
+        if items
+    ]
+    if other_primary:
+        primary_result.append(
+            ("Other QC images", sorted(other_primary, key=lambda item: item[1].as_posix()))
+        )
+
+    surface_result: list[tuple[str, list[tuple[str, Path]]]] = []
+    for surface_type, hemisphere in SURFACE_GROUP_ORDER:
+        items = surface_groups[(surface_type, hemisphere)]
+        if not items:
+            continue
+        side = "Left" if hemisphere == "lh" else "Right"
+        heading = f"{surface_type.capitalize()} surface — {side} hemisphere"
+        surface_result.append(
+            (
+                heading,
+                sorted(
+                    items,
+                    key=lambda item: SURFACE_VIEW_ORDER.get(
+                        _surface_parts(item[1])[2], 99
+                    ),
+                ),
+            )
+        )
+    if other_surfaces:
+        surface_result.append(
+            (
+                "Other surface renderings",
+                sorted(other_surfaces, key=lambda item: item[1].as_posix()),
+            )
+        )
+    return primary_result, surface_result
+
+
 def _markdown_image_grid(
     items: Sequence[tuple[str, Path]], document_dir: Path, width: int = 430
 ) -> list[str]:
@@ -1692,28 +1844,34 @@ def _markdown_visuals(
 ) -> list[str]:
     """Build primary-image and surface-rendering galleries."""
 
-    primary: list[tuple[str, Path]] = []
-    surfaces: list[tuple[str, Path]] = []
-    for label, path in visuals:
-        if path.is_file():
-            primary.append((label.capitalize(), path))
-        elif path.is_dir():
-            surfaces.extend((_surface_label(image), image) for image in sorted(path.glob("*.png")))
+    primary_groups, surface_groups = _group_visuals(visuals)
 
     lines: list[str] = []
-    if primary:
-        lines.extend(_markdown_image_grid(primary, document_dir))
-    if surfaces:
+    for group_title, images in primary_groups:
+        lines.extend((f"#### {_md_escape(group_title)}", ""))
+        lines.extend(_markdown_image_grid(images, document_dir))
+        lines.append("")
+    if surface_groups:
         lines.extend(
             (
+                "#### Cortical surface renderings",
                 "",
-                "<details>",
-                f"<summary><strong>Surface rendering gallery ({len(surfaces)} images)</strong></summary>",
+                "Pial and inflated surfaces are separated by hemisphere and ordered by camera view.",
                 "",
             )
         )
-        lines.extend(_markdown_image_grid(surfaces, document_dir, width=400))
-        lines.extend(("", "</details>"))
+        for group_title, images in surface_groups:
+            noun = "image" if len(images) == 1 else "images"
+            lines.extend(
+                (
+                    "<details>",
+                    f"<summary><strong>{html.escape(group_title)} "
+                    f"({len(images)} {noun})</strong></summary>",
+                    "",
+                )
+            )
+            lines.extend(_markdown_image_grid(images, document_dir, width=400))
+            lines.extend(("", "</details>", ""))
     if not lines:
         lines.append(
             "> No companion images were discovered. Generate FSQC screenshots, surface renderings, "
@@ -2102,9 +2260,9 @@ def format_markdown_subject(
             "than 10 subjects.",
         )
     )
-    image_count = sum(
-        1 if path.is_file() else len(list(path.glob("*.png"))) if path.is_dir() else 0
-        for _, path in visuals
+    primary_image_groups, surface_image_groups = _group_visuals(visuals)
+    image_count = sum(len(images) for _, images in primary_image_groups) + sum(
+        len(images) for _, images in surface_image_groups
     )
     outlier_summary = (
         "none reported"
@@ -2286,15 +2444,7 @@ def _html_visual_gallery(
 ) -> str:
     """Render discovered QC evidence as an accessible HTML gallery."""
 
-    primary: list[tuple[str, Path]] = []
-    surfaces: list[tuple[str, Path]] = []
-    for label, path in visuals:
-        if path.is_file():
-            primary.append((label.capitalize(), path))
-        elif path.is_dir():
-            surfaces.extend(
-                (_surface_label(image), image) for image in sorted(path.glob("*.png"))
-            )
+    primary_groups, surface_groups = _group_visuals(visuals)
 
     def figures(items: Sequence[tuple[str, Path]]) -> str:
         result: list[str] = []
@@ -2312,15 +2462,25 @@ def _html_visual_gallery(
         return "".join(result)
 
     blocks: list[str] = []
-    if primary:
-        blocks.append('<div class="image-grid">' + figures(primary) + "</div>")
-    if surfaces:
+    for group_title, images in primary_groups:
         blocks.append(
-            '<details class="surface-gallery"><summary>Surface rendering gallery '
-            f'({len(surfaces)} images)</summary><div class="image-grid">'
-            + figures(surfaces)
-            + "</div></details>"
+            f'<section class="gallery-group"><h4>{html.escape(group_title)}</h4>'
+            f'<div class="image-grid">{figures(images)}</div></section>'
         )
+    if surface_groups:
+        blocks.append(
+            '<section class="gallery-group"><h4>Cortical surface renderings</h4>'
+            '<p class="section-intro">Pial and inflated surfaces are separated by hemisphere '
+            "and ordered by camera view.</p>"
+        )
+        for group_title, images in surface_groups:
+            noun = "image" if len(images) == 1 else "images"
+            blocks.append(
+                '<details class="surface-gallery"><summary>'
+                f'{html.escape(group_title)} ({len(images)} {noun})</summary>'
+                f'<div class="image-grid">{figures(images)}</div></details>'
+            )
+        blocks.append("</section>")
     if not blocks:
         blocks.append(
             '<p class="empty">No companion images were discovered. Generate FSQC screenshots, '
@@ -2328,6 +2488,97 @@ def _html_visual_gallery(
             "interactively.</p>"
         )
     return "".join(blocks)
+
+
+def _html_review_workflow(
+    findings: Sequence[Finding],
+    processing_integrity: Mapping[str, object],
+    workflow_id: str,
+) -> str:
+    """Render a responsive decision pathway for the human QC workflow."""
+
+    targeted_actions: list[tuple[str, str, str]] = []
+    seen_actions: set[str] = set()
+    for finding in findings:
+        if finding.severity < Severity.NOTE or finding.action in seen_actions:
+            continue
+        seen_actions.add(finding.action)
+        targeted_actions.append(
+            (SEVERITY_LABEL[finding.severity], finding.domain, finding.action)
+        )
+
+    if targeted_actions:
+        targeted_html = "".join(
+            '<li><div><span class="priority-tag priority-{level_class}">{level}</span>'
+            '<strong>{domain}</strong></div><p>{action}</p></li>'.format(
+                level_class=level.lower(),
+                level=html.escape(level),
+                domain=html.escape(domain),
+                action=html.escape(action),
+            )
+            for level, domain, action in targeted_actions
+        )
+    else:
+        targeted_html = (
+            '<li><div><span class="priority-tag priority-routine">ROUTINE</span>'
+            '<strong>No metric-specific targets</strong></div><p>Continue with routine visual '
+            "inspection; an unflagged metric summary is not a visual QC pass.</p></li>"
+        )
+
+    integrity_status = html.escape(
+        str(processing_integrity.get("status", "Processing evidence not available"))
+    )
+    required_outputs = list(processing_integrity.get("required_outputs", []))
+    present_outputs = sum(bool(item[2]) for item in required_outputs if len(item) >= 3)
+    if required_outputs:
+        product_status = f"{present_outputs}/{len(required_outputs)} expected products present"
+    else:
+        product_status = "Expected-product inventory not available"
+    error_count = len(list(processing_integrity.get("error_markers", [])))
+
+    return (
+        f'<section class="workflow-panel" id="{html.escape(workflow_id, quote=True)}" '
+        'aria-label="Recommended review workflow">'
+        '<div class="workflow-heading"><div><p class="eyebrow">Human-in-the-loop pathway</p>'
+        '<h3>Recommended review workflow</h3></div>'
+        '<p>Move through each gate in order. A later decision should use all earlier evidence, '
+        "not one metric or screenshot.</p></div>"
+        '<ol class="workflow">'
+        '<li class="workflow-step phase-verify"><div class="step-marker">1</div>'
+        '<div class="step-card"><span class="step-kicker">Verification gate</span>'
+        '<h4>Confirm processing integrity</h4>'
+        '<div class="status-ribbon"><strong>Status</strong><span>'
+        f"{integrity_status}</span></div>"
+        '<ul class="compact-list">'
+        f"<li>{html.escape(product_status)}</li><li>{error_count} error-marker file(s)</li>"
+        "<li>Resolve incomplete processing or contradictory logs before anatomical review.</li>"
+        "</ul></div></li>"
+        '<li class="workflow-step phase-target"><div class="step-marker">2</div>'
+        '<div class="step-card"><span class="step-kicker">Targeted inspection</span>'
+        '<h4>Review structures and boundaries implicated by the metrics</h4>'
+        '<p class="step-intro">Start with the highest-priority evidence and confirm each flag '
+        "against the appropriate labels, surfaces, and source anatomy.</p>"
+        f'<ul class="workflow-actions">{targeted_html}</ul></div></li>'
+        '<li class="workflow-step phase-global"><div class="step-marker">3</div>'
+        '<div class="step-card"><span class="step-kicker">Whole-scan confirmation</span>'
+        '<h4>Check for errors that summary metrics may miss</h4>'
+        '<ul class="compact-list"><li>Inspect the native/conformed T1 for motion, ringing, '
+        "bias field, dropout, clipping, and incomplete coverage.</li>"
+        "<li>Inspect the brainmask, aseg labels, and white/pial surfaces in all three planes.</li>"
+        "<li>Use screenshots for triage, then confirm questionable areas with interactive "
+        "overlays.</li></ul></div></li>"
+        '<li class="workflow-step phase-decide"><div class="step-marker">4</div>'
+        '<div class="step-card"><span class="step-kicker">Decision gate</span>'
+        '<h4>Assign and document the final human QC outcome</h4>'
+        '<div class="decision-options"><span>Accept</span><span>Accept with caveat</span>'
+        "<span>Reprocess</span><span>Exclude</span><span>Reacquire if feasible</span></div>"
+        '<p class="step-intro">Record the reviewer, rationale, affected structures, and any '
+        "corrective action. Reacquisition is appropriate only when source quality is inadequate "
+        "and a new scan is feasible.</p></div></li></ol>"
+        '<div class="workflow-outcome"><strong>Final principle:</strong> automated metrics '
+        "prioritize inspection; the final decision remains image-based and documented.</div>"
+        "</section>"
+    )
 
 
 def format_html_document(
@@ -2384,6 +2635,8 @@ def format_html_document(
         for section_number, (section_title, section_body) in enumerate(
             _split_text_report(text_report), start=1
         ):
+            if section_title == "Recommended Review Workflow":
+                continue
             report_sections.append(
                 f'<section class="report-section" id="{anchor}-section-{section_number}">'
                 f'<h3>{html.escape(section_title)}</h3>'
@@ -2394,7 +2647,10 @@ def format_html_document(
             f'<article class="subject" id="{anchor}">'
             '<header class="subject-header">'
             f'<div><p class="eyebrow">Subject</p><h2>{subject}</h2></div>'
-            f'<div class="disposition">{disposition}</div></header>'
+            '<div class="subject-status">'
+            f'<div class="disposition">{disposition}</div>'
+            f'<a class="workflow-link" href="#{anchor}-workflow">Open review pathway ↓</a>'
+            "</div></header>"
             '<div class="stat-grid">'
             f'<div><strong>{model["available_core"]}/{model["total_core"]}</strong><span>core metrics</span></div>'
             f'<div><strong>{high_count}</strong><span>high priority</span></div>'
@@ -2405,12 +2661,18 @@ def format_html_document(
             '<section><h3>Priority findings</h3><div class="findings">'
             + "".join(finding_cards)
             + "</div></section>"
-            '<section><h3>Visual QC evidence</h3>'
+            + _html_review_workflow(
+                findings,
+                dict(model.get("processing_integrity", {})),
+                f"{anchor}-workflow",
+            )
+            + '<section><h3>Visual QC evidence</h3>'
             + _html_visual_gallery(visuals, html_path.parent)
             + "</section>"
-            '<section><h3>Complete detailed assessment</h3>'
-            '<p class="section-intro">The sections below preserve the measurements, caveats, '
-            "and review workflow from the terminal report.</p>"
+            + '<section><h3>Complete detailed assessment</h3>'
+            '<p class="section-intro">The sections below preserve the remaining measurements '
+            "and interpretation caveats from the terminal report. The review workflow is "
+            "presented above as a decision pathway.</p>"
             + "".join(report_sections)
             + "</section></article>"
         )
@@ -2444,6 +2706,8 @@ def format_html_document(
     font-weight:700;padding:.65rem .9rem;border-radius:8px;margin:.8rem .5rem 0 0}.button.secondary{
     background:#dceafa}.subject-header{display:flex;gap:1rem;justify-content:space-between;align-items:center;
     border-bottom:1px solid var(--line);padding-bottom:1rem}.subject-header h2{margin:0;font-size:2rem}
+    .subject-status{display:flex;flex-direction:column;align-items:flex-end;gap:.35rem}.workflow-link{
+    color:#285f9d;font-size:.78rem;font-weight:750;text-decoration:none}.workflow-link:hover{text-decoration:underline}
     .disposition{max-width:560px;background:#fff1ee;color:#8d2018;border:1px solid #f2b8b1;border-radius:999px;
     padding:.45rem .8rem;font-size:.82rem;font-weight:800;text-align:center}.subject section>h3{
     margin:2rem 0 1rem;font-size:1.25rem;color:var(--navy)}.findings{display:grid;grid-template-columns:
@@ -2454,10 +2718,44 @@ def format_html_document(
     .severity-high .finding-meta{color:var(--red)}.severity-review{border-left-color:var(--orange)}
     .severity-review .finding-meta{color:var(--orange)}.severity-note{border-left-color:#c08a00}
     .severity-note .finding-meta{color:var(--yellow)}.action{background:var(--wash);padding:.55rem;border-radius:6px}
+    .workflow-panel{position:relative;margin:2.25rem 0;padding:1.35rem;border:1px solid #cfdbed;
+    border-radius:14px;background:linear-gradient(145deg,#f7faff 0%,#f7f5ff 48%,#f7fcf9 100%);
+    overflow:hidden}.workflow-panel:before{content:"";position:absolute;inset:0 0 auto 0;height:5px;
+    background:linear-gradient(90deg,#3478c7 0 25%,#7454c7 25% 50%,#d68124 50% 75%,#269065 75%)}
+    .workflow-heading{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin:.25rem 0 1.3rem}
+    .workflow-heading h3{margin:.15rem 0 0!important;color:var(--navy);font-size:1.35rem!important}
+    .workflow-heading>p{max-width:520px;margin:0;color:var(--muted)}.workflow{position:relative;list-style:none;
+    margin:0;padding:0}.workflow:before{content:"";position:absolute;left:25px;top:34px;bottom:34px;
+    width:4px;border-radius:4px;background:linear-gradient(#3478c7,#7454c7 36%,#d68124 70%,#269065)}
+    .workflow-step{position:relative;display:grid;grid-template-columns:54px minmax(0,1fr);gap:1rem;
+    align-items:start;margin:0 0 1rem}.step-marker{position:relative;z-index:1;display:grid;place-items:center;
+    width:54px;height:54px;border:5px solid #f7f9ff;border-radius:50%;color:#fff;font-size:1.05rem;
+    font-weight:850;box-shadow:0 4px 14px #17345c2b}.phase-verify .step-marker{background:linear-gradient(135deg,#2c65aa,#4297d3)}
+    .phase-target .step-marker{background:linear-gradient(135deg,#6543b5,#9b6ad9)}
+    .phase-global .step-marker{background:linear-gradient(135deg,#bd641d,#e8a23b)}
+    .phase-decide .step-marker{background:linear-gradient(135deg,#187451,#35a674)}.step-card{background:#fff;
+    border:1px solid var(--line);border-radius:11px;padding:1rem 1.1rem;box-shadow:0 5px 16px #17345c0c}
+    .step-card h4{margin:.15rem 0 .55rem;color:var(--ink);font-size:1.05rem}.step-kicker{display:block;
+    color:var(--muted);font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+    .step-intro{margin:.3rem 0 .8rem;color:var(--muted)}.status-ribbon{display:flex;align-items:start;gap:.65rem;
+    padding:.65rem .75rem;border-radius:7px;background:#e9f2fd;color:#204f85}.status-ribbon strong{flex:none;
+    font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}.compact-list{margin:.75rem 0 0;padding-left:1.15rem}
+    .compact-list li{margin:.28rem 0}.workflow-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:.65rem;list-style:none;margin:.75rem 0 0;padding:0}.workflow-actions>li{border:1px solid #e3dff3;
+    border-radius:8px;padding:.7rem;background:#faf9ff}.workflow-actions>li>div{display:flex;align-items:center;
+    gap:.45rem}.workflow-actions p{margin:.4rem 0 0;font-size:.9rem}.priority-tag{display:inline-block;
+    border-radius:999px;padding:.12rem .38rem;font-size:.62rem;font-weight:850;letter-spacing:.04em}
+    .priority-high{color:#8e1911;background:#fee8e5}.priority-review{color:#914109;background:#fff0df}
+    .priority-note{color:#765200;background:#fff6d8}.priority-routine{color:#1a684c;background:#e4f5ed}
+    .decision-options{display:flex;flex-wrap:wrap;gap:.45rem;margin:.7rem 0}.decision-options span{padding:.35rem .6rem;
+    border:1px solid #acd8c4;border-radius:999px;background:#effaf5;color:#166244;font-size:.82rem;font-weight:750}
+    .workflow-outcome{margin-left:70px;padding:.75rem 1rem;border-radius:8px;background:linear-gradient(90deg,
+    #e8f1fc,#eee9fb,#eaf7f1);color:#273d5c}.workflow-outcome strong{color:var(--navy)}
     .image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
     figure{margin:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#eef2f7}
     figure img{display:block;width:100%;height:330px;object-fit:contain;background:#101722}figcaption{
-    background:#fff;padding:.65rem;font-weight:650}.surface-gallery{margin-top:1rem;border:1px solid var(--line);
+    background:#fff;padding:.65rem;font-weight:650}.gallery-group{margin:1.25rem 0}.gallery-group h4{
+    margin:0 0 .7rem;color:var(--navy);font-size:1.05rem}.surface-gallery{margin-top:.75rem;border:1px solid var(--line);
     border-radius:9px;padding:.85rem}.surface-gallery summary{cursor:pointer;font-weight:750;color:var(--navy);
     margin-bottom:.9rem}.report-section{margin:1rem 0!important;border:1px solid var(--line);border-radius:9px;
     overflow:hidden}.report-section h3{margin:0!important;background:#eaf0f7;padding:.75rem 1rem;font-size:1rem!important}
@@ -2465,10 +2763,13 @@ def format_html_document(
     SFMono-Regular,Consolas,monospace;background:#fbfcfe}.section-intro,.empty{color:var(--muted)}
     .footer{text-align:center;color:var(--muted);padding:2rem}.jump-nav a{margin-right:.8rem;font-weight:700}
     @media(max-width:650px){.page-header{padding-top:2rem}.subject-header{align-items:flex-start;
-    flex-direction:column}.disposition{border-radius:8px;text-align:left}.findings{grid-template-columns:1fr}
-    figure img{height:250px}}@media print{body{background:#fff}.page-header{background:#fff;color:#000;
+    flex-direction:column}.subject-status{align-items:flex-start}.disposition{border-radius:8px;text-align:left}
+    .findings{grid-template-columns:1fr}
+    .workflow-heading{align-items:start;flex-direction:column;gap:.5rem}.workflow-actions{grid-template-columns:1fr}
+    .workflow-outcome{margin-left:0}figure img{height:250px}}@media print{body{background:#fff}.page-header{background:#fff;color:#000;
     padding:1rem 0}.lede{color:#333}.warning,.overview,.subject{box-shadow:none}.button,.jump-nav{display:none}
-    .subject{break-before:page}.surface-gallery[open] .image-grid{display:grid}}
+    .subject{break-before:page}.workflow-panel,.step-card{box-shadow:none}.workflow-step{break-inside:avoid}
+    .surface-gallery[open] .image-grid{display:grid}}
     """
 
     return """<!doctype html>
@@ -2503,7 +2804,7 @@ accepting, reprocessing, excluding, or considering reacquisition.</aside>
   </section>
   {subject_articles}
 </main>
-<footer class="footer">Generated by <code>fsqc_report.py -H</code> · Research use only</footer>
+<footer class="footer">Generated by <code>fsqc_report</code> · Research use only</footer>
 </body>
 </html>
 """.format(
