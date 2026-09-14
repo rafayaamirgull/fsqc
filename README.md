@@ -26,6 +26,7 @@ ___
   - [Roadmap](#roadmap)
 - [Usage](#usage)
   - [As a command line tool](#as-a-command-line-tool)
+  - [Generate an interpreted QC report](#generate-an-interpreted-qc-report)
   - [As a Python package](#as-a-python-package)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -419,6 +420,40 @@ run_fsqc --subjects_dir /my/subjects/directory --output_dir /my/output/directory
 ```
 
 - Note that the `--screenshots`, `--fornix`, `--shape`, and `--outlier` (and other) arguments can also be used in conjunction.
+
+### Generate an interpreted QC report
+
+After `run_fsqc` has created `fsqc-results.csv`, use `fsqc_report.py` to turn
+the raw measurements into a structured subject-level review aid. Run it before
+using cortical thicknesses or regional volumes in a study, when triaging scans
+for manual inspection, and again after reprocessing a flagged reconstruction.
+
+Print the detailed report in the terminal:
+
+```bash
+python3 ./fsqc_report.py /my/output/directory/fsqc-results.csv
+```
+
+Generate a pictorial `README.md` beside the CSV:
+
+```bash
+python3 ./fsqc_report.py /my/output/directory/fsqc-results.csv -R
+```
+
+The `-R` report automatically links available FSQC screenshots, skull-strip,
+fornix, and surface-rendering images. For the most useful report, generate those
+optional outputs with `run_fsqc` first. Be aware that `-R` writes or replaces
+`README.md` in the CSV's directory.
+
+Useful options include `--subject <ID>` to report selected subjects,
+`--save-report <file>` to save the plain-text report, and
+`--profile descriptive` to suppress fixed screening heuristics. Run
+`python3 ./fsqc_report.py --help` for all options.
+
+The generated interpretation is an automated research reconstruction-QC aid,
+not a diagnosis or final accept/exclude decision. Confirm every important flag
+by reviewing the source T1 image, segmentation labels, skull strip, and white
+and pial surface overlays.
 
 ### As a Python package
 
