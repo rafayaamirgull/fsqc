@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate cautious, expert-style reports from DeepMI FSQC output.
+"""Generate structured quality-control reports from DeepMI FSQC output.
 
 The program is a research quality-control (QC) aid for FreeSurfer/FastSurfer
-reconstructions.  It is deliberately not a diagnostic system: quantitative QC
+reconstructions. It is not a diagnostic system: quantitative QC
 metrics can prioritize visual review, but they cannot establish pathology or
 replace inspection of the source T1 image, segmentation, and surfaces.
 
@@ -617,10 +617,10 @@ def detailed_outliers(
 
 
 def volume_pairs(region_row: Mapping[str, object] | None) -> list[dict[str, object]]:
-    """Calculate real bilateral volume asymmetry from ``all.regions.stats``.
+    """Calculate bilateral volume asymmetry from ``all.regions.stats``.
 
-    AI is the signed asymmetry index ``200 * (L - R) / (L + R)``.  This is
-    distinct from the BrainPrint shape distance in the main FSQC result table.
+    The signed asymmetry index is ``200 * (L - R) / (L + R)``. It is distinct
+    from the BrainPrint shape distance in the main FSQC result table.
     """
 
     if region_row is None:
@@ -632,13 +632,13 @@ def volume_pairs(region_row: Mapping[str, object] | None) -> list[dict[str, obje
         if left is None or right is None or left < 0 or right < 0:
             continue
         total = left + right
-        ai = 200.0 * (left - right) / total if total > 0 else None
+        asymmetry_index = 200.0 * (left - right) / total if total > 0 else None
         ratio = max(left, right) / min(left, right) if min(left, right) > 0 else None
-        if ai is None:
+        if asymmetry_index is None:
             direction = "undefined"
-        elif abs(ai) < 0.05:
+        elif abs(asymmetry_index) < 0.05:
             direction = "approximately equal"
-        elif ai > 0:
+        elif asymmetry_index > 0:
             direction = "left larger"
         else:
             direction = "right larger"
@@ -647,7 +647,7 @@ def volume_pairs(region_row: Mapping[str, object] | None) -> list[dict[str, obje
                 "structure": structure.replace("-", " "),
                 "left": left,
                 "right": right,
-                "ai": ai,
+                "asymmetry_index": asymmetry_index,
                 "ratio": ratio,
                 "direction": direction,
             }
@@ -1029,10 +1029,10 @@ class FSQCAnalyzer:
         if not self.profile.enabled or not pairs:
             return
         for pair in pairs:
-            ai = pair["ai"]
-            if not isinstance(ai, float):
+            asymmetry_index = pair["asymmetry_index"]
+            if not isinstance(asymmetry_index, float):
                 continue
-            magnitude = abs(ai)
+            magnitude = abs(asymmetry_index)
             if magnitude >= self.profile.volume_ai_review_pct:
                 level = Severity.REVIEW
             elif magnitude >= self.profile.volume_ai_note_pct:
@@ -1044,10 +1044,11 @@ class FSQCAnalyzer:
                 "Bilateral volumes",
                 f"Marked raw volume asymmetry: {pair['structure']}",
                 f"L={pair['left']:.1f} mm^3, R={pair['right']:.1f} mm^3, "
-                f"AI={ai:+.1f}%, larger/smaller={pair['ratio']:.2f}",
-                "The signed AI is descriptive and region-specific normal ranges are not supplied. "
-                "Asymmetry may be anatomical, segmentation-related, or influenced by pathology; "
-                "the metric alone cannot decide among these possibilities.",
+                f"asymmetry index={asymmetry_index:+.1f}%, "
+                f"larger/smaller={pair['ratio']:.2f}",
+                "The signed asymmetry index is descriptive, and region-specific normal ranges "
+                "are not supplied. Asymmetry may be anatomical, segmentation-related, or "
+                "influenced by pathology; the metric alone cannot distinguish these possibilities.",
                 "Inspect both labels on the T1 image and compare against a matched, quality-controlled "
                 "reference cohort before biological interpretation.",
             )
@@ -1177,7 +1178,7 @@ class FSQCAnalyzer:
         if available < len(CORE_METRICS) / 2:
             return "INCOMPLETE METRICS - QC DETERMINATION LIMITED"
         if high or review >= 2:
-            return "HIGH-PRIORITY MANUAL QC - HOLD AUTOMATED MORPHOMETRY"
+            return "HIGH-PRIORITY MANUAL QC - HOLD MORPHOMETRIC ANALYSIS"
         if review == 1:
             return "TARGETED MANUAL QC REQUIRED"
         if any(item.severity == Severity.NOTE for item in self.findings):
@@ -1271,7 +1272,7 @@ def format_report(
 
     lines = [
         "=" * REPORT_WIDTH,
-        "AUTOMATED FREESURFER / FASTSURFER QUALITY-CONTROL REPORT",
+        "FREESURFER / FASTSURFER RESEARCH QUALITY-CONTROL REPORT",
         "=" * REPORT_WIDTH,
         f"Subject ID        : {model['subject']}",
         f"Generated         : {generated}",
@@ -1491,25 +1492,29 @@ def format_report(
     _section(lines, 7, "TRUE HEMISPHERIC SUBCORTICAL VOLUME ASYMMETRY")
     volume_data = list(model["volume_pairs"])
     if volume_data:
-        lines.append("  Structure                         Left mm^3   Right mm^3       AI       Ratio   Direction")
+        lines.append(
+            "  Structure                         Left mm^3   Right mm^3  Asymmetry     Ratio   Direction"
+        )
         for pair in volume_data:
-            ai_text = "n/a" if pair["ai"] is None else f"{pair['ai']:+.1f}%"
+            asymmetry = pair["asymmetry_index"]
+            asymmetry_text = "n/a" if asymmetry is None else f"{asymmetry:+.1f}%"
             ratio_text = "n/a" if pair["ratio"] is None else f"{pair['ratio']:.2f}"
             lines.append(
                 f"  {pair['structure']:<33} {pair['left']:>10.1f} {pair['right']:>12.1f} "
-                f"{ai_text:>8} {ratio_text:>10}   {pair['direction']}"
+                f"{asymmetry_text:>10} {ratio_text:>9}   {pair['direction']}"
             )
         lines.extend(
             _wrapped_bullet(
-                "AI = 200 x (L - R) / (L + R); positive values are left-larger and negative values "
-                "are right-larger. Ratio is larger/smaller and therefore has no direction. These are "
-                "raw FreeSurfer/FastSurfer label volumes, not age/sex/eTIV-adjusted reference scores."
+                "Asymmetry index = 200 x (L - R) / (L + R); positive values are left-larger "
+                "and negative values are right-larger. Ratio is larger/smaller and therefore has "
+                "no direction. These are raw FreeSurfer/FastSurfer label volumes, not "
+                "age/sex/eTIV-adjusted reference scores."
             )
         )
         lines.extend(
             _wrapped_bullet(
-                f"Volume source: {regions_path}. Generic AI screening is intentionally conservative; "
-                "structure-specific, matched reference distributions are preferred."
+                f"Volume source: {regions_path}. The generic asymmetry screening bounds are "
+                "conservative; structure-specific, matched reference distributions are preferred."
             )
         )
     else:
@@ -1667,7 +1672,7 @@ def _md_path(path: Path, document_dir: Path) -> str:
 
 
 def _disposition_icon(disposition: object) -> str:
-    """Return a visual marker for the automated QC disposition."""
+    """Return the icon used for a screening disposition."""
 
     text = str(disposition)
     if text.startswith("HIGH-PRIORITY"):
@@ -1681,12 +1686,12 @@ def _disposition_icon(disposition: object) -> str:
     return "⚪"
 
 
-def _asymmetry_bar(ai: object) -> str:
-    """Render a compact, direction-neutral magnitude bar for a volume AI."""
+def _asymmetry_bar(asymmetry_index: object) -> str:
+    """Render the magnitude of a volume asymmetry index."""
 
-    if not isinstance(ai, float):
+    if not isinstance(asymmetry_index, float):
         return "—"
-    filled = min(10, max(0, round(abs(ai) / 5.0)))
+    filled = min(10, max(0, round(abs(asymmetry_index) / 5.0)))
     return "█" * filled + "░" * (10 - filled)
 
 
@@ -1901,7 +1906,7 @@ def format_markdown_subject(
         "",
         "| QC disposition | Priority findings | Metric coverage | Screening profile |",
         "|---|---:|---:|---|",
-        f"| {icon} **{_md_escape(model['disposition'])}** | 🔴 {high_count} · 🟠 {review_count} · "
+        f"| {icon} **{_md_escape(model['disposition'])}** | 🔴 {high_count} · 🔵 {review_count} · "
         f"🟡 {note_count} | {model['available_core']}/{model['total_core']} | "
         f"`{_md_escape(analyzer.profile.name)}` |",
         "",
@@ -1911,8 +1916,9 @@ def format_markdown_subject(
     lines.extend(
         (
             f"> [!{callout}]",
-            "> **Automated triage only.** Hold or review measurements as indicated below, but make the "
-            "final accept/reprocess/exclude decision from the source T1, labels, and surface overlays.",
+            "> **Quantitative screening only.** Hold or review measurements as indicated below, "
+            "but make the final accept/reprocess/exclude decision from the source T1, labels, "
+            "and surface overlays.",
             "",
             _html_review_workflow(
                 findings=findings,
@@ -1942,7 +1948,14 @@ def format_markdown_subject(
                 f"| {MD_SEVERITY[finding.severity]} | {_md_escape(finding.domain)} | "
                 f"**{_md_escape(finding.title)}** | {_md_escape(finding.evidence)} |"
             )
-        lines.extend(("", "<details>", "<summary><strong>Expert interpretation and actions</strong></summary>", ""))
+        lines.extend(
+            (
+                "",
+                "<details>",
+                "<summary><strong>Finding details and review actions</strong></summary>",
+                "",
+            )
+        )
         for finding in priority:
             lines.extend(
                 (
@@ -2202,25 +2215,28 @@ def format_markdown_subject(
     if volume_data:
         lines.extend(
             (
-                "| Structure | Left (mm³) | Right (mm³) | AI | Ratio | Magnitude | Direction |",
+                "| Structure | Left (mm³) | Right (mm³) | Asymmetry index | Ratio | Magnitude | Direction |",
                 "|---|---:|---:|---:|---:|:---:|---|",
             )
         )
         for pair in volume_data:
-            ai = pair["ai"]
+            asymmetry_index = pair["asymmetry_index"]
             ratio = pair["ratio"]
-            ai_text = "n/a" if ai is None else f"{ai:+.1f}%"
+            asymmetry_text = (
+                "n/a" if asymmetry_index is None else f"{asymmetry_index:+.1f}%"
+            )
             ratio_text = "n/a" if ratio is None else f"{ratio:.2f}"
             lines.append(
                 f"| {_md_escape(pair['structure'])} | {pair['left']:.1f} | {pair['right']:.1f} | "
-                f"{ai_text} | {ratio_text} | `{_asymmetry_bar(ai)}` | {_md_escape(pair['direction'])} |"
+                f"{asymmetry_text} | {ratio_text} | `{_asymmetry_bar(asymmetry_index)}` | "
+                f"{_md_escape(pair['direction'])} |"
             )
         source = _md_path(regions_path, document_dir) if regions_path else "not available"
         lines.extend(
             (
                 "",
-                "AI = `200 × (L − R) / (L + R)`. Positive is left-larger; negative is right-larger. "
-                "Ratio is larger/smaller and directionless.",
+                "Asymmetry index = `200 × (L − R) / (L + R)`. Positive is left-larger; "
+                "negative is right-larger. Ratio is larger/smaller and directionless.",
                 "",
                 f"Volume source: [`all.regions.stats`]({source})",
             )
@@ -2344,7 +2360,7 @@ def format_markdown_document(
         "# Neuroimaging Quality-Control Report",
         "",
         "> [!IMPORTANT]",
-        "> This is an automated **research reconstruction-QC** report for FreeSurfer/FastSurfer "
+        "> This is a **research reconstruction-QC** report for FreeSurfer/FastSurfer "
         "outputs. It is not a medical diagnosis, a radiology report, or a substitute for visual review.",
         "",
         "## Report overview",
@@ -2357,10 +2373,10 @@ def format_markdown_document(
         f"| FSQC version | {_md_escape(metadata.get('version', 'not available'))} |",
         f"| Subjects reported | {len(report_items)} |",
         "",
-        "**Status guide:** 🔴 high priority · 🔵 review · 🟡 note · 🟢 no automated flag. "
+        "**Status guide:** 🔴 high priority · 🔵 review · 🟡 note · 🟢 no quantitative flag. "
         "These are triage states, not clinical classifications.",
         "",
-        "| Subject | Automated disposition | Findings | Coverage |",
+        "| Subject | Screening disposition | Findings | Coverage |",
         "|---|---|---:|---:|",
     ]
     for model, _, _, _ in report_items:
@@ -2502,7 +2518,7 @@ def _html_review_workflow(
         if maximum >= Severity.NOTE:
             return "review", "Review"
         if was_assessed:
-            return "pass", "No automated flag"
+            return "pass", "No quantitative flag"
         return "unknown", "Not assessed"
 
     stage_statuses = [
@@ -2681,7 +2697,7 @@ def _html_review_workflow(
     legend = "".join(
         f'<span><i class="state-dot state-{state}"></i>{label}</span>'
         for state, label in (
-            ("pass", "No automated flag"),
+            ("pass", "No quantitative flag"),
             ("review", "Review"),
             ("correct", "Action required"),
             ("unknown", "Not assessed"),
@@ -2690,15 +2706,15 @@ def _html_review_workflow(
     return (
         f'<section class="workflow-panel" id="{html.escape(workflow_id, quote=True)}" '
         'aria-label="Recommended review workflow">'
-        '<div class="workflow-heading"><div><p class="eyebrow">Human-in-the-loop pathway</p>'
+        '<div class="workflow-heading"><div><p class="eyebrow">Manual QC pathway</p>'
         '<h3>Recommended review workflow</h3><p>Structured quality checks before biological '
         "interpretation.</p></div>"
         f'<div class="status-legend" aria-label="Workflow status legend">{legend}</div></div>'
         '<div class="workflow-layout"><nav class="workflow-rail" '
         f'aria-label="Workflow stages"><ol>{rail}</ol></nav>'
         f'<div class="workflow-board">{cards}</div></div>'
-        '<div class="workflow-outcome"><strong>Interpretation rule:</strong> “No automated flag” '
-        "is not a visual pass. Automated evidence prioritizes inspection; the final decision "
+        '<div class="workflow-outcome"><strong>Interpretation rule:</strong> “No quantitative flag” '
+        "is not a visual pass. Quantitative results prioritize inspection; the final decision "
         "remains image-based and documented.</div></section>"
     )
 
@@ -2830,8 +2846,8 @@ def _render_markdown_body(markdown_text: str) -> str:
                     '<header class="page-header"><div class="page-header-inner">'
                     '<p class="eyebrow">FreeSurfer / FastSurfer research QC</p>'
                     f'<h1 id="{anchor}">{_markdown_inline(title)}</h1>'
-                    '<p class="lede">Automated interpretation of DeepMI FSQC metrics, processing '
-                    "evidence, asymmetry measurements, statistical flags, and companion snapshots."
+                    '<p class="lede">Structured review of DeepMI FSQC metrics, processing evidence, '
+                    "asymmetry measurements, statistical flags, and companion snapshots."
                     "</p></div></header>"
                 )
             elif level == 2:
