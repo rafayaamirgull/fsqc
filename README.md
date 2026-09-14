@@ -446,18 +446,25 @@ Generate a styled, browser-friendly `fsqc-report.html` beside the CSV:
 python3 ./fsqc_report.py /my/output/directory/fsqc-results.csv -H
 ```
 
-Use `-R -H` together to generate both formats in one run.
+`README.md` is the canonical report source. With `-H`, the script first writes
+or refreshes the pictorial `README.md`, reads that saved Markdown, and converts
+it to `fsqc-report.html`. This keeps the section order, findings, metric tables,
+review workflow, image links, and explanatory text synchronized between both
+formats. Therefore, `-H` generates both files; `-R -H` remains accepted but is
+equivalent to `-H` for report-file creation.
 
-The HTML report presents the recommended human review process as a responsive,
-color-coded pathway from processing verification through the final documented
-QC decision.
+The README contains the full six-stage human-review pathway and uses portable
+status icons so it remains readable in GitHub and other Markdown viewers. The
+README-to-HTML conversion adds responsive cards, gradients, colored severity
+badges, styled callouts and tables, print rules, and a link back to the canonical
+Markdown source.
 
 The `-R` and `-H` reports automatically group all available FSQC segmentation,
 skull-strip, fornix, hypothalamus, hippocampus/amygdala, and surface-rendering
 images. Surface views are separated into pial/inflated and left/right hemisphere
 galleries. For the most useful report, generate those optional outputs with
-`run_fsqc` first. Be aware that `-R` writes or replaces `README.md` in the CSV's
-directory.
+`run_fsqc` first. Be aware that both `-R` and `-H` write or replace `README.md`
+in the CSV's directory; `-H` then derives `fsqc-report.html` from that file.
 
 Useful options include `-H` for HTML, `--subject <ID>` to report selected subjects,
 `--save-report <file>` to save the plain-text report, and
