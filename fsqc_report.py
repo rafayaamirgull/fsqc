@@ -2439,6 +2439,17 @@ def _split_text_report(report: str) -> list[tuple[str, str]]:
     return sections
 
 
+def _highlight_html_report_tokens(report_text: str) -> str:
+    """Escape report text and emphasize severity markers without altering layout."""
+
+    escaped = html.escape(report_text)
+    return escaped.replace(
+        "[REVIEW]", '<strong class="report-token report-review">[REVIEW]</strong>'
+    ).replace(
+        "[NOTE]", '<strong class="report-token report-note">[NOTE]</strong>'
+    )
+
+
 def _html_visual_gallery(
     visuals: Sequence[tuple[str, Path]], document_dir: Path
 ) -> str:
@@ -2494,90 +2505,273 @@ def _html_review_workflow(
     findings: Sequence[Finding],
     processing_integrity: Mapping[str, object],
     workflow_id: str,
+    analyzer: FSQCAnalyzer,
+    model: Mapping[str, object],
+    visuals: Sequence[tuple[str, Path]],
+    document_dir: Path,
 ) -> str:
-    """Render a responsive decision pathway for the human QC workflow."""
+    """Render a six-stage, evidence-aware QC workflow board."""
 
-    targeted_actions: list[tuple[str, str, str]] = []
-    seen_actions: set[str] = set()
-    for finding in findings:
-        if finding.severity < Severity.NOTE or finding.action in seen_actions:
-            continue
-        seen_actions.add(finding.action)
-        targeted_actions.append(
-            (SEVERITY_LABEL[finding.severity], finding.domain, finding.action)
-        )
-
-    if targeted_actions:
-        targeted_html = "".join(
-            '<li><div><span class="priority-tag priority-{level_class}">{level}</span>'
-            '<strong>{domain}</strong></div><p>{action}</p></li>'.format(
-                level_class=level.lower(),
-                level=html.escape(level),
-                domain=html.escape(domain),
-                action=html.escape(action),
-            )
-            for level, domain, action in targeted_actions
-        )
-    else:
-        targeted_html = (
-            '<li><div><span class="priority-tag priority-routine">ROUTINE</span>'
-            '<strong>No metric-specific targets</strong></div><p>Continue with routine visual '
-            "inspection; an unflagged metric summary is not a visual QC pass.</p></li>"
-        )
-
-    integrity_status = html.escape(
-        str(processing_integrity.get("status", "Processing evidence not available"))
+    stage_domains = (
+        {"Processing integrity", "Spatial normalization"},
+        {"Signal and contrast", "MRIQC-style image quality"},
+        {"Segmentation"},
+        {"Surface reconstruction"},
+        {"Bilateral volumes", "Statistical outliers", "Cohort comparison"},
     )
+    stage_findings = [
+        [
+            finding
+            for finding in findings
+            if finding.severity >= Severity.NOTE and finding.domain in domains
+        ]
+        for domains in stage_domains
+    ]
+
+    signal_keys = (
+        "wm_snr_orig",
+        "gm_snr_orig",
+        "wm_snr_norm",
+        "gm_snr_norm",
+        "con_snr_lh",
+        "con_snr_rh",
+        "efc",
+        "qi2",
+        "fber",
+        "snr_tissue_total",
+        "snr_head",
+    )
+    surface_keys = (
+        "holes_lh",
+        "holes_rh",
+        "defects_lh",
+        "defects_rh",
+        "topo_lh",
+        "topo_rh",
+    )
+    assessed = (
+        bool(processing_integrity.get("available"))
+        or any(analyzer.value(f"rot_tal_{axis}") is not None for axis in "xyz"),
+        any(analyzer.value(key) is not None for key in signal_keys),
+        analyzer.value("cc_size") is not None,
+        any(analyzer.value(key) is not None for key in surface_keys),
+        bool(model.get("volume_pairs"))
+        or bool(model.get("shape_metrics"))
+        or any(
+            analyzer.value(key) is not None
+            for key in (
+                "n_outlier_norms",
+                "n_outlier_sample_nonpar",
+                "n_outlier_sample_param",
+            )
+        ),
+    )
+
+    def status_for(items: Sequence[Finding], was_assessed: bool) -> tuple[str, str]:
+        maximum = max((item.severity for item in items), default=Severity.INFO)
+        if maximum >= Severity.HIGH:
+            return "correct", "Action required"
+        if maximum >= Severity.NOTE:
+            return "review", "Review"
+        if was_assessed:
+            return "pass", "No automated flag"
+        return "unknown", "Not assessed"
+
+    stage_statuses = [
+        status_for(items, was_assessed)
+        for items, was_assessed in zip(stage_findings, assessed, strict=True)
+    ]
+    stage_statuses.append(("pending", "Human decision pending"))
+
+    visual_assets: list[tuple[str, Path, str | None]] = []
+    seen_paths: set[Path] = set()
+    for supplied_label, supplied_path in visuals:
+        if supplied_path.is_dir():
+            images = sorted(
+                path
+                for path in supplied_path.rglob("*")
+                if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+            )
+            labelled = [(_surface_label(path), path) for path in images]
+        elif supplied_path.is_file() and supplied_path.suffix.lower() in IMAGE_SUFFIXES:
+            labelled = [(supplied_label, supplied_path)]
+        else:
+            continue
+        for label, path in labelled:
+            resolved = path.resolve()
+            if resolved in seen_paths:
+                continue
+            seen_paths.add(resolved)
+            visual_assets.append((label, path, _visual_module(path)))
+
+    def thumbnails(modules: set[str], maximum: int = 3) -> str:
+        selected = [asset for asset in visual_assets if asset[2] in modules][:maximum]
+        if not selected:
+            return ""
+        figures: list[str] = []
+        for label, path, _ in selected:
+            source = html.escape(_md_path(path, document_dir), quote=True)
+            figures.append(
+                f'<a class="workflow-thumb" href="{source}" title="{html.escape(label, quote=True)}">'
+                f'<img src="{source}" alt="{html.escape(label, quote=True)}" loading="lazy">'
+                f"<span>{html.escape(label)}</span></a>"
+            )
+        return '<div class="workflow-thumbs">' + "".join(figures) + "</div>"
+
+    default_actions = (
+        "Confirm completion evidence, expected products, orientation, and Talairach alignment.",
+        "Inspect the native T1 for motion, ringing, bias field, dropout, clipping, and coverage.",
+        "Confirm flagged anatomical labels in all three planes; do not infer pathology from a metric.",
+        "Inspect skull strip, white/pial boundaries, topology corrections, and surface renderings.",
+        "Compare only with compatible, quality-controlled references before biological interpretation.",
+    )
+
+    def action_list(stage_index: int) -> str:
+        items = stage_findings[stage_index]
+        if not items:
+            return (
+                '<ul class="stage-actions"><li><span class="state-dot state-'
+                f'{stage_statuses[stage_index][0]}"></span><div>'
+                f"<strong>Required visual check</strong><p>{html.escape(default_actions[stage_index])}"
+                "</p></div></li></ul>"
+            )
+        grouped: dict[str, tuple[Severity, list[str]]] = {}
+        for finding in items:
+            if finding.action in grouped:
+                previous_severity, titles = grouped[finding.action]
+                if finding.title not in titles:
+                    titles.append(finding.title)
+                grouped[finding.action] = (max(previous_severity, finding.severity), titles)
+            else:
+                grouped[finding.action] = (finding.severity, [finding.title])
+
+        rendered: list[str] = []
+        for action, (severity, titles) in grouped.items():
+            state = "correct" if severity >= Severity.HIGH else "review"
+            rendered.append(
+                f'<li><span class="state-dot state-{state}"></span><div>'
+                f"<strong>{html.escape(' · '.join(titles))}</strong>"
+                f"<p>{html.escape(action)}</p></div></li>"
+            )
+        return '<ul class="stage-actions">' + "".join(rendered) + "</ul>"
+
     required_outputs = list(processing_integrity.get("required_outputs", []))
     present_outputs = sum(bool(item[2]) for item in required_outputs if len(item) >= 3)
-    if required_outputs:
-        product_status = f"{present_outputs}/{len(required_outputs)} expected products present"
-    else:
-        product_status = "Expected-product inventory not available"
+    product_status = (
+        f"{present_outputs}/{len(required_outputs)} expected products present"
+        if required_outputs
+        else "Expected-product inventory unavailable"
+    )
     error_count = len(list(processing_integrity.get("error_markers", [])))
+    integrity_status = str(
+        processing_integrity.get("status", "Processing evidence not available")
+    )
+    cohort_n = len(analyzer.all_rows)
+    cohort_context = (
+        f"Robust within-table context available (n={cohort_n})"
+        if cohort_n >= MIN_COHORT_SIZE
+        else f"Robust sample comparison unavailable (n={cohort_n}; need ≥{MIN_COHORT_SIZE})"
+    )
 
+    titles = (
+        "Processing & orientation",
+        "Acquisition & signal QC",
+        "Segmentation & label QC",
+        "Surface & topology QC",
+        "Cohort & plausibility review",
+        "Final human QC decision",
+    )
+    rail = "".join(
+        '<li><span class="rail-number">{number:02d}</span><span>{title}</span>'
+        '<i class="rail-state state-{state}" title="{status}"></i></li>'.format(
+            number=index + 1,
+            title=html.escape(title),
+            state=stage_statuses[index][0],
+            status=html.escape(stage_statuses[index][1], quote=True),
+        )
+        for index, title in enumerate(titles)
+    )
+
+    def card_header(index: int, title: str) -> str:
+        state, status = stage_statuses[index - 1]
+        return (
+            f'<header><span class="card-number">{index:02d}</span>'
+            f"<h4>{html.escape(title)}</h4>"
+            f'<span class="stage-status status-{state}">{html.escape(status)}</span></header>'
+        )
+
+    cards = (
+        '<section class="flow-card stage-1">'
+        + card_header(1, titles[0])
+        + '<div class="flow-card-body"><div class="evidence-ribbon"><strong>Processing status</strong>'
+        f"<span>{html.escape(integrity_status)}</span><small>{html.escape(product_status)} · "
+        f"{error_count} error marker(s)</small></div>"
+        + action_list(0)
+        + thumbnails({"screenshots"}, 1)
+        + "</div></section>"
+        '<section class="flow-card stage-2">'
+        + card_header(2, titles[1])
+        + '<div class="flow-card-body"><p class="card-prompt">Is source-image signal and '
+        "coverage adequate for reconstruction review?</p>"
+        + action_list(1)
+        + thumbnails({"screenshots", "skullstrip"}, 2)
+        + "</div></section>"
+        '<section class="flow-card stage-3">'
+        + card_header(3, titles[2])
+        + '<div class="flow-card-body"><p class="card-prompt">Confirm anatomical labels—not '
+        "just numerical plausibility.</p>"
+        + action_list(2)
+        + thumbnails({"fornix", "hypothalamus", "hippocampus"}, 3)
+        + "</div></section>"
+        '<section class="flow-card stage-4">'
+        + card_header(4, titles[3])
+        + '<div class="flow-card-body"><p class="card-prompt">Check final geometry after '
+        "automated topology correction.</p>"
+        + action_list(3)
+        + thumbnails({"surfaces", "skullstrip"}, 3)
+        + "</div></section>"
+        '<section class="flow-card stage-5">'
+        + card_header(5, titles[4])
+        + '<div class="flow-card-body"><div class="reference-context"><strong>Reference context</strong>'
+        f"<span>{html.escape(cohort_context)}</span></div>"
+        + action_list(4)
+        + "</div></section>"
+        '<section class="flow-card stage-6">'
+        + card_header(6, titles[5])
+        + '<div class="flow-card-body"><div class="decision-question">Quality acceptable after '
+        "complete visual review?</div>"
+        '<div class="decision-branches"><div class="decision-accept"><strong>Accept</strong>'
+        "<span>Retain measurement</span><small>or accept with documented caveat</small></div>"
+        '<div class="decision-reprocess"><strong>Reprocess</strong><span>Correct reconstruction</span>'
+        "<small>then repeat QC</small></div>"
+        '<div class="decision-exclude"><strong>Exclude</strong><span>Do not retain measurement</span>'
+        "<small>reacquire only if source quality is inadequate and feasible</small></div></div>"
+        '<div class="record-decision">Record reviewer, outcome, rationale, affected structures, '
+        "and corrective action.</div></div></section>"
+    )
+
+    legend = "".join(
+        f'<span><i class="state-dot state-{state}"></i>{label}</span>'
+        for state, label in (
+            ("pass", "No automated flag"),
+            ("review", "Review"),
+            ("correct", "Action required"),
+            ("unknown", "Not assessed"),
+        )
+    )
     return (
         f'<section class="workflow-panel" id="{html.escape(workflow_id, quote=True)}" '
         'aria-label="Recommended review workflow">'
         '<div class="workflow-heading"><div><p class="eyebrow">Human-in-the-loop pathway</p>'
-        '<h3>Recommended review workflow</h3></div>'
-        '<p>Move through each gate in order. A later decision should use all earlier evidence, '
-        "not one metric or screenshot.</p></div>"
-        '<ol class="workflow">'
-        '<li class="workflow-step phase-verify"><div class="step-marker">1</div>'
-        '<div class="step-card"><span class="step-kicker">Verification gate</span>'
-        '<h4>Confirm processing integrity</h4>'
-        '<div class="status-ribbon"><strong>Status</strong><span>'
-        f"{integrity_status}</span></div>"
-        '<ul class="compact-list">'
-        f"<li>{html.escape(product_status)}</li><li>{error_count} error-marker file(s)</li>"
-        "<li>Resolve incomplete processing or contradictory logs before anatomical review.</li>"
-        "</ul></div></li>"
-        '<li class="workflow-step phase-target"><div class="step-marker">2</div>'
-        '<div class="step-card"><span class="step-kicker">Targeted inspection</span>'
-        '<h4>Review structures and boundaries implicated by the metrics</h4>'
-        '<p class="step-intro">Start with the highest-priority evidence and confirm each flag '
-        "against the appropriate labels, surfaces, and source anatomy.</p>"
-        f'<ul class="workflow-actions">{targeted_html}</ul></div></li>'
-        '<li class="workflow-step phase-global"><div class="step-marker">3</div>'
-        '<div class="step-card"><span class="step-kicker">Whole-scan confirmation</span>'
-        '<h4>Check for errors that summary metrics may miss</h4>'
-        '<ul class="compact-list"><li>Inspect the native/conformed T1 for motion, ringing, '
-        "bias field, dropout, clipping, and incomplete coverage.</li>"
-        "<li>Inspect the brainmask, aseg labels, and white/pial surfaces in all three planes.</li>"
-        "<li>Use screenshots for triage, then confirm questionable areas with interactive "
-        "overlays.</li></ul></div></li>"
-        '<li class="workflow-step phase-decide"><div class="step-marker">4</div>'
-        '<div class="step-card"><span class="step-kicker">Decision gate</span>'
-        '<h4>Assign and document the final human QC outcome</h4>'
-        '<div class="decision-options"><span>Accept</span><span>Accept with caveat</span>'
-        "<span>Reprocess</span><span>Exclude</span><span>Reacquire if feasible</span></div>"
-        '<p class="step-intro">Record the reviewer, rationale, affected structures, and any '
-        "corrective action. Reacquisition is appropriate only when source quality is inadequate "
-        "and a new scan is feasible.</p></div></li></ol>"
-        '<div class="workflow-outcome"><strong>Final principle:</strong> automated metrics '
-        "prioritize inspection; the final decision remains image-based and documented.</div>"
-        "</section>"
+        '<h3>Recommended review workflow</h3><p>Structured quality checks before biological '
+        "interpretation.</p></div>"
+        f'<div class="status-legend" aria-label="Workflow status legend">{legend}</div></div>'
+        '<div class="workflow-layout"><nav class="workflow-rail" '
+        f'aria-label="Workflow stages"><ol>{rail}</ol></nav>'
+        f'<div class="workflow-board">{cards}</div></div>'
+        '<div class="workflow-outcome"><strong>Interpretation rule:</strong> “No automated flag” '
+        "is not a visual pass. Automated evidence prioritizes inspection; the final decision "
+        "remains image-based and documented.</div></section>"
     )
 
 
@@ -2640,7 +2834,7 @@ def format_html_document(
             report_sections.append(
                 f'<section class="report-section" id="{anchor}-section-{section_number}">'
                 f'<h3>{html.escape(section_title)}</h3>'
-                f'<pre>{html.escape(section_body)}</pre></section>'
+                f'<pre>{_highlight_html_report_tokens(section_body)}</pre></section>'
             )
 
         subject_articles.append(
@@ -2665,6 +2859,10 @@ def format_html_document(
                 findings,
                 dict(model.get("processing_integrity", {})),
                 f"{anchor}-workflow",
+                analyzer,
+                model,
+                visuals,
+                html_path.parent,
             )
             + '<section><h3>Visual QC evidence</h3>'
             + _html_visual_gallery(visuals, html_path.parent)
@@ -2719,38 +2917,63 @@ def format_html_document(
     .severity-review .finding-meta{color:var(--orange)}.severity-note{border-left-color:#c08a00}
     .severity-note .finding-meta{color:var(--yellow)}.action{background:var(--wash);padding:.55rem;border-radius:6px}
     .workflow-panel{position:relative;margin:2.25rem 0;padding:1.35rem;border:1px solid #cfdbed;
-    border-radius:14px;background:linear-gradient(145deg,#f7faff 0%,#f7f5ff 48%,#f7fcf9 100%);
-    overflow:hidden}.workflow-panel:before{content:"";position:absolute;inset:0 0 auto 0;height:5px;
-    background:linear-gradient(90deg,#3478c7 0 25%,#7454c7 25% 50%,#d68124 50% 75%,#269065 75%)}
-    .workflow-heading{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin:.25rem 0 1.3rem}
-    .workflow-heading h3{margin:.15rem 0 0!important;color:var(--navy);font-size:1.35rem!important}
-    .workflow-heading>p{max-width:520px;margin:0;color:var(--muted)}.workflow{position:relative;list-style:none;
-    margin:0;padding:0}.workflow:before{content:"";position:absolute;left:25px;top:34px;bottom:34px;
-    width:4px;border-radius:4px;background:linear-gradient(#3478c7,#7454c7 36%,#d68124 70%,#269065)}
-    .workflow-step{position:relative;display:grid;grid-template-columns:54px minmax(0,1fr);gap:1rem;
-    align-items:start;margin:0 0 1rem}.step-marker{position:relative;z-index:1;display:grid;place-items:center;
-    width:54px;height:54px;border:5px solid #f7f9ff;border-radius:50%;color:#fff;font-size:1.05rem;
-    font-weight:850;box-shadow:0 4px 14px #17345c2b}.phase-verify .step-marker{background:linear-gradient(135deg,#2c65aa,#4297d3)}
-    .phase-target .step-marker{background:linear-gradient(135deg,#6543b5,#9b6ad9)}
-    .phase-global .step-marker{background:linear-gradient(135deg,#bd641d,#e8a23b)}
-    .phase-decide .step-marker{background:linear-gradient(135deg,#187451,#35a674)}.step-card{background:#fff;
-    border:1px solid var(--line);border-radius:11px;padding:1rem 1.1rem;box-shadow:0 5px 16px #17345c0c}
-    .step-card h4{margin:.15rem 0 .55rem;color:var(--ink);font-size:1.05rem}.step-kicker{display:block;
-    color:var(--muted);font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
-    .step-intro{margin:.3rem 0 .8rem;color:var(--muted)}.status-ribbon{display:flex;align-items:start;gap:.65rem;
-    padding:.65rem .75rem;border-radius:7px;background:#e9f2fd;color:#204f85}.status-ribbon strong{flex:none;
-    font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}.compact-list{margin:.75rem 0 0;padding-left:1.15rem}
-    .compact-list li{margin:.28rem 0}.workflow-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:.65rem;list-style:none;margin:.75rem 0 0;padding:0}.workflow-actions>li{border:1px solid #e3dff3;
-    border-radius:8px;padding:.7rem;background:#faf9ff}.workflow-actions>li>div{display:flex;align-items:center;
-    gap:.45rem}.workflow-actions p{margin:.4rem 0 0;font-size:.9rem}.priority-tag{display:inline-block;
-    border-radius:999px;padding:.12rem .38rem;font-size:.62rem;font-weight:850;letter-spacing:.04em}
-    .priority-high{color:#8e1911;background:#fee8e5}.priority-review{color:#914109;background:#fff0df}
-    .priority-note{color:#765200;background:#fff6d8}.priority-routine{color:#1a684c;background:#e4f5ed}
-    .decision-options{display:flex;flex-wrap:wrap;gap:.45rem;margin:.7rem 0}.decision-options span{padding:.35rem .6rem;
-    border:1px solid #acd8c4;border-radius:999px;background:#effaf5;color:#166244;font-size:.82rem;font-weight:750}
-    .workflow-outcome{margin-left:70px;padding:.75rem 1rem;border-radius:8px;background:linear-gradient(90deg,
-    #e8f1fc,#eee9fb,#eaf7f1);color:#273d5c}.workflow-outcome strong{color:var(--navy)}
+    border-radius:14px;background:linear-gradient(145deg,#f7faff,#f5f9ff 52%,#f7fcfa);overflow:hidden;
+    scroll-margin-top:1rem}.workflow-panel:before{content:"";position:absolute;inset:0 0 auto 0;height:5px;
+    background:linear-gradient(90deg,#2270c8,#00a2ba 35%,#315fb0 67%,#12987a)}.workflow-heading{
+    display:flex;align-items:start;justify-content:space-between;gap:1.5rem;margin:.25rem 0 1.25rem}
+    .workflow-heading h3{margin:.12rem 0 0!important;color:#10295d;font-size:1.65rem!important}
+    .workflow-heading p{margin:.15rem 0 0;color:#41628f}.status-legend{display:flex;flex-wrap:wrap;
+    justify-content:flex-end;gap:.55rem;padding:.55rem .7rem;border:1px solid #d8e4f2;border-radius:9px;
+    background:#fff}.status-legend span{display:flex;align-items:center;gap:.3rem;font-size:.7rem;white-space:nowrap}
+    .state-dot{display:inline-block;flex:0 0 auto;width:12px;height:12px;border-radius:50%;background:#8190a5}
+    .state-pass{background:#2da477}.state-review{background:#df951d}.state-correct{background:#df2941}
+    .state-unknown,.state-pending{background:#8190a5}.workflow-layout{display:grid;grid-template-columns:145px
+    minmax(0,1fr);gap:1rem}.workflow-rail{border-right:1px solid #cfdeef;padding:.15rem .9rem .15rem 0}
+    .workflow-rail ol{list-style:none;margin:0;padding:0}.workflow-rail li{position:relative;display:grid;
+    grid-template-columns:38px 1fr 9px;align-items:center;gap:.4rem;min-height:76px;color:#496486;
+    font-size:.7rem;font-weight:750;text-transform:uppercase}.workflow-rail li:not(:last-child):after{content:"";
+    position:absolute;left:18px;top:56px;bottom:-14px;width:2px;background:#c7d7e9}.rail-number{
+    position:relative;z-index:1;display:grid;place-items:center;width:38px;height:38px;border:1px solid #abc5e4;
+    border-radius:50%;background:#edf4fc;color:#346495;font-size:.9rem}.rail-state{width:8px;height:8px;border-radius:50%}
+    .workflow-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;align-items:stretch}
+    .flow-card{--stage-a:#276fc5;--stage-b:#318bda;position:relative;min-width:0;border:1px solid #bed8f1;
+    border-radius:10px;background:#fff;overflow:visible;box-shadow:0 5px 14px #17345c10}.flow-card>header{
+    display:grid;grid-template-columns:38px minmax(0,1fr);gap:.55rem;align-items:center;padding:.7rem;
+    border-radius:9px 9px 0 0;color:#fff;background:linear-gradient(120deg,var(--stage-a),var(--stage-b))}
+    .flow-card>header h4{
+    margin:0;color:#fff;font-size:.9rem;line-height:1.25}.card-number{display:grid;place-items:center;width:36px;height:36px;
+    border:1px solid #ffffff70;border-radius:50%;background:#ffffff24;font-weight:850}.stage-status{
+    grid-column:1/-1;justify-self:start;padding:.14rem .45rem;border-radius:999px;background:#fff;color:#40536d;
+    font-size:.62rem;font-weight:850;letter-spacing:.03em;text-transform:uppercase}.status-pass{color:#187451}
+    .status-review{color:#955b00}.status-correct{color:#a41f2f}.status-unknown,.status-pending{color:#596a80}
+    .stage-2{--stage-a:#008cb0;--stage-b:#09a8b1}.stage-3{--stage-a:#235eae;--stage-b:#317dc9}
+    .stage-4{--stage-a:#008b9e;--stage-b:#08a7ac}.stage-5{--stage-a:#3267ba;--stage-b:#28539c}
+    .stage-6{--stage-a:#008b83;--stage-b:#19a779}.flow-card-body{display:flex;flex-direction:column;
+    gap:.65rem;padding:.75rem;height:calc(100% - 78px)}.card-prompt{margin:0;padding:.55rem;border:1px solid #d6e5f5;
+    border-radius:7px;background:#f4f9fe;color:#214a79;font-size:.82rem;font-weight:700;text-align:center}
+    .evidence-ribbon,.reference-context{display:flex;flex-direction:column;gap:.15rem;padding:.55rem .65rem;
+    border-radius:7px;background:#edf5fe;color:#255482;font-size:.76rem}.evidence-ribbon strong,
+    .reference-context strong{text-transform:uppercase;font-size:.63rem;letter-spacing:.06em}.evidence-ribbon small{
+    color:#61758e}.reference-context{background:#f1f0fd;color:#514793}.stage-actions{display:flex;flex-direction:column;
+    gap:.45rem;list-style:none;margin:0;padding:0}.stage-actions li{display:flex;align-items:flex-start;gap:.5rem;
+    padding:.5rem;border:1px solid #e1e9f2;border-radius:7px;background:#fbfdff}.stage-actions .state-dot{
+    margin-top:.22rem}.stage-actions strong{display:block;font-size:.78rem}.stage-actions p{margin:.15rem 0 0;
+    color:#465b75;font-size:.72rem;line-height:1.4}.workflow-thumbs{display:grid;grid-template-columns:repeat(3,1fr);
+    gap:.35rem;margin-top:auto}.workflow-thumb{position:relative;display:block;min-width:0;border:1px solid #dce6f0;
+    border-radius:6px;overflow:hidden;background:#101722;text-decoration:none}.workflow-thumb img{display:block;width:100%;
+    height:64px;object-fit:cover}.workflow-thumb span{display:block;padding:.25rem;background:#fff;color:#334f70;
+    font-size:.58rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.decision-question{
+    padding:.55rem;border-radius:999px;background:linear-gradient(100deg,#216bc0,#168ec2);color:#fff;
+    font-size:.8rem;font-weight:800;text-align:center}.decision-branches{display:grid;grid-template-columns:repeat(3,1fr);
+    gap:.4rem}.decision-branches>div{display:flex;flex-direction:column;gap:.12rem;min-width:0;padding:.55rem .35rem;
+    border-radius:7px;text-align:center}.decision-branches strong{font-size:.74rem}.decision-branches span{
+    font-size:.62rem;font-weight:700}.decision-branches small{font-size:.55rem;line-height:1.25}.decision-accept{
+    background:#e3f5eb;color:#176b49}.decision-reprocess{background:#fff1cc;color:#825300}.decision-exclude{
+    background:#fee4e7;color:#9e1e31}.record-decision{padding:.5rem;border:1px solid #cddff1;border-radius:7px;
+    background:#edf5fd;color:#285586;font-size:.7rem;text-align:center}.workflow-outcome{margin:1rem 0 0 161px;
+    padding:.7rem .9rem;border-radius:8px;background:linear-gradient(90deg,#e8f1fc,#e9f8f3);color:#273d5c}
+    .workflow-outcome strong{color:var(--navy)}.flow-card:not(.stage-3):not(.stage-6):after{content:"›";
+    position:absolute;z-index:2;right:-.82rem;top:48%;color:#2775c5;font-size:1.7rem;font-weight:900}
     .image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
     figure{margin:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#eef2f7}
     figure img{display:block;width:100%;height:330px;object-fit:contain;background:#101722}figcaption{
@@ -2760,15 +2983,23 @@ def format_html_document(
     margin-bottom:.9rem}.report-section{margin:1rem 0!important;border:1px solid var(--line);border-radius:9px;
     overflow:hidden}.report-section h3{margin:0!important;background:#eaf0f7;padding:.75rem 1rem;font-size:1rem!important}
     pre{margin:0;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.55 ui-monospace,
-    SFMono-Regular,Consolas,monospace;background:#fbfcfe}.section-intro,.empty{color:var(--muted)}
+    SFMono-Regular,Consolas,monospace;background:#fbfcfe}.report-token{font-weight:900}.report-review{
+    color:#1769aa}.report-note{color:#b77900}.section-intro,.empty{color:var(--muted)}
     .footer{text-align:center;color:var(--muted);padding:2rem}.jump-nav a{margin-right:.8rem;font-weight:700}
+    @media(max-width:950px){.workflow-layout{grid-template-columns:1fr}.workflow-rail{border:0;border-bottom:1px solid
+    #cfdeef;padding:0 0 .7rem}.workflow-rail ol{display:grid;grid-template-columns:repeat(6,1fr);gap:.3rem}
+    .workflow-rail li{display:flex;flex-direction:column;gap:.25rem;min-height:0;text-align:center}.workflow-rail li:not(:last-child):after{
+    display:none}.rail-state{position:absolute;right:calc(50% - 22px);top:1px}.workflow-board{grid-template-columns:repeat(2,
+    minmax(0,1fr))}.workflow-outcome{margin-left:0}.flow-card:after{display:none}}
     @media(max-width:650px){.page-header{padding-top:2rem}.subject-header{align-items:flex-start;
     flex-direction:column}.subject-status{align-items:flex-start}.disposition{border-radius:8px;text-align:left}
     .findings{grid-template-columns:1fr}
-    .workflow-heading{align-items:start;flex-direction:column;gap:.5rem}.workflow-actions{grid-template-columns:1fr}
-    .workflow-outcome{margin-left:0}figure img{height:250px}}@media print{body{background:#fff}.page-header{background:#fff;color:#000;
+    .workflow-heading{align-items:start;flex-direction:column;gap:.5rem}.status-legend{justify-content:flex-start}
+    .workflow-rail{display:none}.workflow-board{grid-template-columns:1fr}.workflow-thumbs{grid-template-columns:repeat(3,1fr)}
+    figure img{height:250px}}@media print{body{background:#fff}.page-header{background:#fff;color:#000;
     padding:1rem 0}.lede{color:#333}.warning,.overview,.subject{box-shadow:none}.button,.jump-nav{display:none}
-    .subject{break-before:page}.workflow-panel,.step-card{box-shadow:none}.workflow-step{break-inside:avoid}
+    .subject{break-before:page}.workflow-panel,.flow-card{box-shadow:none}.flow-card{break-inside:avoid}
+    .workflow-board{grid-template-columns:1fr}.flow-card-body{height:auto}
     .surface-gallery[open] .image-grid{display:grid}}
     """
 
